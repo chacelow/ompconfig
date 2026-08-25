@@ -32,3 +32,6 @@ __pycache__/
 .DS_Store
 .idea/
 .vscode/
+
+# External references (cloned locally as source-of-truth for design borrowings; not vendored)
+references/
