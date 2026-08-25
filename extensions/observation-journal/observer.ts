@@ -31,23 +31,31 @@ const OBSERVER_SYSTEM_PROMPT =
   "\n" +
   "输出结构见 output schema。写完后回复一句短确认，不再输出其他内容。";
 
+// OMP 的 output 是 JTD (RFC 8927)：`{ elements }` = 数组，`{ properties }` = 对象。
+// 不用 JSON-Schema 的 `type: "object"` / `type: "array"`。对齐 scout.md 内建 agent。
 const OBSERVER_OUTPUT_SCHEMA = {
-  type: "object",
   properties: {
     observations: {
-      type: "array",
+      metadata: {
+        description:
+          "抽取到的观察列表；空数组表示片段无值得记录的内容。",
+      },
       elements: {
-        type: "object",
         properties: {
-          text: { type: "string", description: "观察正文（<=200 字）" },
-          category: {
+          text: {
+            metadata: { description: "观察正文，完整句子，<=200 字" },
             type: "string",
-            description:
-              "fact | decision | preference | failed-attempt | deviation | constraint | open-question",
+          },
+          category: {
+            metadata: {
+              description:
+                "fact | decision | preference | failed-attempt | deviation | constraint | open-question",
+            },
+            type: "string",
           },
           confidence: {
+            metadata: { description: "high | medium | low" },
             type: "string",
-            description: "high | medium | low",
           },
         },
       },
