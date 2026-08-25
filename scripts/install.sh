@@ -39,6 +39,12 @@ for skill_dir in "$repo_root"/skills/*; do
   install_tree "$skill_dir" "$HOME/.agents/skills/$(basename "$skill_dir")"
 done
 
+if command -v uv >/dev/null 2>&1; then
+  uv tool install yt-dlp || echo "Warning: yt-dlp installation failed" >&2
+elif ! command -v yt-dlp >/dev/null 2>&1; then
+  echo "Warning: install yt-dlp to use youtube-transcript" >&2
+fi
+
 if command -v omp >/dev/null 2>&1; then
   omp plugin marketplace add MohamedAbdallah-14/unslop || true
   omp plugin install --scope user unslop@unslop-marketplace || true

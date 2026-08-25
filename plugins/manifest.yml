@@ -13,6 +13,12 @@ skillSources:
     agent: universal
     skills: all
     install: npx skills@latest add vinvcn/mattpocock-skills-zh-CN --global --agent universal --skill '*' --copy --yes
+  - source: amosblomqvist/pi-config
+    path: skills/youtube-transcript
+    scope: global
+    runtimeDependency: yt-dlp
+    installDependency: uv tool install yt-dlp
+    notes: Vendored and adapted for Universal/OMP paths and multilingual caption selection.
 
 notes:
   - All 35 Matt Pocock Chinese skills are vendored under skills/ and enabled by omp/agent/config.yml.

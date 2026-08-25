@@ -16,7 +16,7 @@ matt_skills=(
   setup-ts-deep-modules writing-beats writing-fragments writing-shape
 )
 
-tracked_skills=(finding-unknowns "${matt_skills[@]}")
+tracked_skills=(finding-unknowns youtube-transcript "${matt_skills[@]}")
 
 for skill in "${tracked_skills[@]}"; do
   rm -rf "$repo_root/skills/$skill"
