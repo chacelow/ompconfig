@@ -135,6 +135,16 @@ function notify(
   if (ctx.hasUI && ctx.ui?.notify) ctx.ui.notify(message, level);
 }
 
+const CATEGORY_ORDER = [
+  "fact",
+  "decision",
+  "preference",
+  "failed-attempt",
+  "deviation",
+  "constraint",
+  "open-question",
+] as const;
+
 const CATEGORY_ICONS: Record<string, string> = {
   fact: "F",
   decision: "D",
@@ -145,17 +155,67 @@ const CATEGORY_ICONS: Record<string, string> = {
   "open-question": "?",
 };
 
-function categoryHistogram(state: JournalState): string {
+const BAR_WIDTH = 12;
+
+function categoryBuckets(state: JournalState): Record<string, number> {
   const buckets: Record<string, number> = {};
   for (const obs of state.observations) {
     buckets[obs.category] = (buckets[obs.category] ?? 0) + 1;
   }
-  const parts: string[] = [];
-  for (const [category, icon] of Object.entries(CATEGORY_ICONS)) {
+  return buckets;
+}
+
+function histogramLines(state: JournalState): string[] {
+  const buckets = categoryBuckets(state);
+  const values = Object.values(buckets);
+  const max = values.length === 0 ? 0 : Math.max(...values);
+  const lines: string[] = [];
+  for (const category of CATEGORY_ORDER) {
     const count = buckets[category] ?? 0;
-    if (count > 0) parts.push(`${icon}${count}`);
+    if (count === 0) continue;
+    const filled = max === 0 ? 0 : Math.max(1, Math.round((count / max) * BAR_WIDTH));
+    const bar = "█".repeat(filled).padEnd(BAR_WIDTH, "·");
+    lines.push(`   ${CATEGORY_ICONS[category]} ${bar} ${count}`);
   }
-  return parts.length === 0 ? "—" : parts.join(" ");
+  return lines;
+}
+
+function lastTraceError(ctx: ExtensionContextLike): string | null {
+  const runtime = runtimeFor(ctx);
+  for (let i = runtime.trace.length - 1; i >= 0; i--) {
+    const entry = runtime.trace[i];
+    if (entry.event === "promote.error" || entry.event === "promote.failed") {
+      const detail = entry.detail ? ` ${JSON.stringify(entry.detail)}` : "";
+      return `${entry.event}${detail}`;
+    }
+  }
+  return null;
+}
+
+function formatContextUsage(ctx: ExtensionContextLike): string | null {
+  const usage = ctx.getContextUsage?.();
+  if (!usage) return null;
+  const tokens = typeof usage.tokens === "number" ? usage.tokens : undefined;
+  const window =
+    typeof usage.contextWindow === "number" ? usage.contextWindow : undefined;
+  if (tokens === undefined) return null;
+  if (window && window > 0) {
+    const pct = Math.round((tokens / window) * 100);
+    return `ctx ${tokens.toLocaleString()}/${window.toLocaleString()} (${pct}%)`;
+  }
+  return `ctx ${tokens.toLocaleString()}`;
+}
+
+function formatCost(ctx: ExtensionContextLike): string | null {
+  const snapshot = ctx.getAsyncJobSnapshot?.();
+  if (!snapshot) return null;
+  const total = snapshot.cost?.total ?? snapshot.totalCost;
+  if (typeof total !== "number") return null;
+  return `$${total.toFixed(3)}`;
+}
+
+function journalSummaryLine(state: JournalState, pending: number): string {
+  return `Journal · ${state.observations.length} obs · ${state.segments.length} seg · ${pending} pending`;
 }
 
 function refreshObservability(
@@ -166,21 +226,29 @@ function refreshObservability(
     (obs) => obs.durable && !state.promotions.has(obs.id),
   ).length;
   if (!state.enabled) {
-    const line = "📓 Journal · off · type /journey on to enable";
     if (ctx.hasUI) {
       ctx.ui?.setStatus?.(STATUS_KEY, "Journal · off");
-      ctx.ui?.setWidget?.({ placement: "aboveEditor", content: [line] });
+      ctx.ui?.setWidget?.({
+        placement: "aboveEditor",
+        content: ["📓 Journal · off · type /journey on to enable"],
+      });
     }
     return;
   }
-  const summary = `Journal · ${state.observations.length} obs · ${state.segments.length} seg · ${durablePending} pending`;
-  const histogram = categoryHistogram(state);
+  const summary = journalSummaryLine(state, durablePending);
+  const bars = histogramLines(state);
+  const footerBits: string[] = [];
+  const usage = formatContextUsage(ctx);
+  if (usage) footerBits.push(usage);
+  const cost = formatCost(ctx);
+  if (cost) footerBits.push(cost);
+  const err = lastTraceError(ctx);
+  if (err) footerBits.push(`err ${err}`);
+  const lines: string[] = [`📓 ${summary}`, ...bars];
+  if (footerBits.length > 0) lines.push(`   ${footerBits.join(" · ")}`);
   if (ctx.hasUI) {
     ctx.ui?.setStatus?.(STATUS_KEY, summary);
-    ctx.ui?.setWidget?.({
-      placement: "aboveEditor",
-      content: [`📓 ${summary}`, `   ${histogram}`],
-    });
+    ctx.ui?.setWidget?.({ placement: "aboveEditor", content: lines });
   }
 }
 
@@ -344,19 +412,39 @@ function handleGate(
 
 function handleStatus(ctx: ExtensionContextLike): void {
   const state = currentState(ctx);
-  const cursor = state.cursor
-    ? `cursor=${state.cursor.coversUpToEntryId} (+${state.cursor.tokensSince}t)`
-    : "cursor=(none)";
-  notify(
-    ctx,
-    [
-      `enabled=${state.enabled}`,
-      `observations=${state.observations.length}`,
-      `segments=${state.segments.length}`,
-      `promotions=${state.promotions.size}`,
-      cursor,
-    ].join(" | "),
+  const durablePending = state.observations.filter(
+    (obs) => obs.durable && !state.promotions.has(obs.id),
+  ).length;
+  const promoted = Array.from(state.promotions.values()).filter(
+    (rec) => rec.status === "promoted",
+  ).length;
+  const buckets = categoryBuckets(state);
+  const breakdown = CATEGORY_ORDER
+    .filter((cat) => (buckets[cat] ?? 0) > 0)
+    .map((cat) => `${cat}=${buckets[cat]}`)
+    .join(" ");
+  const journeySize = state.segments.reduce(
+    (sum, seg) => sum + seg.body.length,
+    0,
   );
+  const usage = formatContextUsage(ctx) ?? "ctx n/a";
+  const cost = formatCost(ctx) ?? "cost n/a";
+  const err = lastTraceError(ctx) ?? "none";
+  const cursor = state.cursor
+    ? `${state.cursor.coversUpToEntryId} (+${state.cursor.tokensSince}t)`
+    : "(none)";
+  const runtime = runtimeFor(ctx);
+  const lines = [
+    `Observation Journal · ${state.enabled ? "ON" : "OFF"}`,
+    `  observations: ${state.observations.length}  (pending: ${durablePending}, promoted: ${promoted})`,
+    `  breakdown:    ${breakdown || "—"}`,
+    `  segments:     ${state.segments.length}  (journey body ${journeySize} chars)`,
+    `  cursor:       ${cursor}`,
+    `  trace events: ${runtime.trace.length}  last-error: ${err}`,
+    `  context:      ${usage}`,
+    `  cost:         ${cost}`,
+  ];
+  notify(ctx, lines.join("\n"));
 }
 
 async function handleShow(ctx: ExtensionContextLike): Promise<void> {

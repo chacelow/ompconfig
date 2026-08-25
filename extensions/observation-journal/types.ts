@@ -165,6 +165,17 @@ export interface SettingsLike {
   get?: (name: string) => unknown;
 }
 
+export interface ContextUsageLike {
+  tokens?: number;
+  contextWindow?: number;
+  percent?: number;
+}
+
+export interface AsyncJobSnapshotLike {
+  cost?: { total?: number };
+  totalCost?: number;
+}
+
 export interface ExtensionContextLike {
   hasUI?: boolean;
   ui?: UiLike;
@@ -173,6 +184,8 @@ export interface ExtensionContextLike {
   getSetting?: (name: string) => unknown;
   artifactsDir?: string;
   memory?: MemoryLike;
+  getContextUsage?: () => ContextUsageLike | null | undefined;
+  getAsyncJobSnapshot?: () => AsyncJobSnapshotLike | null | undefined;
 }
 
 export interface CommandSubdefinition {

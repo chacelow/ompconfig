@@ -135,7 +135,7 @@ describe("Discoverability", () => {
     expect(last.join(" ")).toContain("/journey on");
   });
 
-  test("gate=on widget renders category histogram", async () => {
+  test("gate=on widget renders multi-line bar chart with category counts", async () => {
     const host = createHost();
     observationJournalFactory(host.api);
     const { ctx, widgets } = createFakeContext(host);
@@ -145,11 +145,11 @@ describe("Discoverability", () => {
     await runCommand(host, "add preference alpha preference", ctx);
     await runCommand(host, "add open-question alpha question", ctx);
     const last = widgets.at(-1) ?? [];
-    const joined = last.join(" ");
-    expect(joined).toContain("3 obs");
-    expect(joined).toContain("D1");
-    expect(joined).toContain("P1");
-    expect(joined).toContain("?1");
+    expect(last[0]).toContain("3 obs");
+    const joined = last.join("\n");
+    expect(joined).toMatch(/D █+·*\s+1/);
+    expect(joined).toMatch(/P █+·*\s+1/);
+    expect(joined).toMatch(/\? █+·*\s+1/);
   });
 
   test("/journey help prints every subcommand and category", async () => {

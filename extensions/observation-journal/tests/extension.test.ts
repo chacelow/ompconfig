@@ -260,8 +260,8 @@ describe("observation-journal extension", () => {
     // Sanity: status notification lists 3 observations.
     await runCommand(host, "journey", "status", ctx);
     const statusMessage = notifications.at(-1)?.message ?? "";
-    expect(statusMessage).toContain("observations=3");
-    expect(statusMessage).toContain("segments=1");
+    expect(statusMessage).toContain("observations: 3");
+    expect(statusMessage).toContain("segments:     1");
   });
 
   test("redaction runs on stored content", async () => {
@@ -316,7 +316,7 @@ describe("observation-journal extension", () => {
     await fireEvent(host, "session_branch", ctxB.ctx);
     await runCommand(host, "journey", "status", ctxB.ctx);
     const statusB = ctxB.notifications.at(-1)?.message ?? "";
-    expect(statusB).toContain("observations=0");
-    expect(statusB).toContain("enabled=false");
+    expect(statusB).toContain("observations: 0");
+    expect(statusB).toContain("OFF");
   });
 });
