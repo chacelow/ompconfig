@@ -140,6 +140,15 @@ _Last updated: <ISO timestamp>_
 
 ---
 
+## 7.1 Discoverability
+
+- OMP `available_commands_update` (v17.4.2) 只对 `source: builtin` 命令广播 `subcommands` 和 `input.hint`。extension 命令始终以 `input.hint: "arguments"` 出现在 TUI 下拉里。因此本扩展不依赖下拉子命令提示。
+- 发现路径：
+  - `/journey help` 打印完整子命令表 + category 列表；未知子命令时 warn 也指向它。
+  - `ui.setWidget` 在 gate=off 时显示 `📓 Journal · off · type /journey on to enable`。gate=on 时显示 counts + 分类直方图（`F/D/P/X/≠/C/?`）。
+  - `ui.setStatus("observation-journal", ...)` 在 TUI status line 常驻。
+  - 命令定义中仍附带 `subcommands` 元数据，等 OMP 未来暴露 extension subcommands 时自动生效。
+
 ## 6. 安全边界
 
 ### 6.1 项目 Git 工作区

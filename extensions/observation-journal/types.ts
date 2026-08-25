@@ -175,8 +175,17 @@ export interface ExtensionContextLike {
   memory?: MemoryLike;
 }
 
+export interface CommandSubdefinition {
+  name: string;
+  description?: string;
+  usage?: string;
+}
+
 export interface CommandDefinition {
   description: string;
+  aliases?: string[];
+  input?: { hint?: string };
+  subcommands?: CommandSubdefinition[];
   handler: (args: string, ctx: ExtensionContextLike) => Promise<void> | void;
 }
 

@@ -135,6 +135,29 @@ function notify(
   if (ctx.hasUI && ctx.ui?.notify) ctx.ui.notify(message, level);
 }
 
+const CATEGORY_ICONS: Record<string, string> = {
+  fact: "F",
+  decision: "D",
+  preference: "P",
+  "failed-attempt": "X",
+  deviation: "≠",
+  constraint: "C",
+  "open-question": "?",
+};
+
+function categoryHistogram(state: JournalState): string {
+  const buckets: Record<string, number> = {};
+  for (const obs of state.observations) {
+    buckets[obs.category] = (buckets[obs.category] ?? 0) + 1;
+  }
+  const parts: string[] = [];
+  for (const [category, icon] of Object.entries(CATEGORY_ICONS)) {
+    const count = buckets[category] ?? 0;
+    if (count > 0) parts.push(`${icon}${count}`);
+  }
+  return parts.length === 0 ? "—" : parts.join(" ");
+}
+
 function refreshObservability(
   ctx: ExtensionContextLike,
   state: JournalState,
@@ -142,14 +165,21 @@ function refreshObservability(
   const durablePending = state.observations.filter(
     (obs) => obs.durable && !state.promotions.has(obs.id),
   ).length;
-  const status = state.enabled
-    ? `Journal · ${state.observations.length} obs · ${state.segments.length} seg · ${durablePending} pending`
-    : "Journal · off";
+  if (!state.enabled) {
+    const line = "📓 Journal · off · type /journey on to enable";
+    if (ctx.hasUI) {
+      ctx.ui?.setStatus?.(STATUS_KEY, "Journal · off");
+      ctx.ui?.setWidget?.({ placement: "aboveEditor", content: [line] });
+    }
+    return;
+  }
+  const summary = `Journal · ${state.observations.length} obs · ${state.segments.length} seg · ${durablePending} pending`;
+  const histogram = categoryHistogram(state);
   if (ctx.hasUI) {
-    ctx.ui?.setStatus?.(STATUS_KEY, status);
+    ctx.ui?.setStatus?.(STATUS_KEY, summary);
     ctx.ui?.setWidget?.({
       placement: "aboveEditor",
-      content: [`📓 ${status}`],
+      content: [`📓 ${summary}`, `   ${histogram}`],
     });
   }
 }
@@ -742,6 +772,41 @@ async function handleDump(ctx: ExtensionContextLike): Promise<void> {
   notify(ctx, `Dump (${body.length} bytes):\n${body}`);
 }
 
+const HELP_LINES: string[] = [
+  "Observation Journal — /journey subcommands",
+  "",
+  "  /journey                              status snapshot",
+  "  /journey on | off | toggle            gate control",
+  "  /journey status                       print counts + gate state",
+  "  /journey show                         open full JOURNEY.md",
+  "  /journey add <cat> <content>          record an observation",
+  "  /journey mark-durable <id>            mark as promotion candidate",
+  "  /journey flush                        fold into segment + write JOURNEY.md",
+  "  /journey export <path>                copy JOURNEY.md to <path>",
+  "  /journey observe                      queue an observation request",
+  "  /journey candidates                   list durable pending",
+  "  /journey promote [<id>]               promote to Mnemopi (confirm required)",
+  "  /journey forget <id>                  drop from candidates",
+  "  /journey trace                        recent event trace",
+  "  /journey dump                         full internal state",
+  "  /journey help                         this reference",
+  "",
+  "Categories:",
+  "  fact | decision | preference | failed-attempt |",
+  "  deviation | constraint | open-question",
+  "",
+  "Defaults: OFF per session. Promotion is manual only.",
+];
+
+async function handleHelp(ctx: ExtensionContextLike): Promise<void> {
+  const body = HELP_LINES.join("\n");
+  if (ctx.ui?.editor) {
+    await ctx.ui.editor({ title: "Journey help", content: body, readOnly: true });
+    return;
+  }
+  notify(ctx, body);
+}
+
 async function handleCommand(
   pi: ExtensionAPILike,
   ctx: ExtensionContextLike,
@@ -774,6 +839,7 @@ async function handleCommand(
   if (subcommand === "forget") return handleForget(pi, ctx, restTokens[0]);
   if (subcommand === "trace") return handleTrace(ctx);
   if (subcommand === "dump") return handleDump(ctx);
+  if (subcommand === "help" || subcommand === "?") return handleHelp(ctx);
   notify(ctx, `Unknown /journey subcommand: ${subcommand}`, "warn");
 }
 
@@ -833,8 +899,26 @@ export default function observationJournal(pi: ExtensionAPILike): void {
   });
 
   pi.registerCommand("journey", {
-    description:
-      "Observation Journal: status, on, off, toggle, show, add, mark-durable, flush, export, observe, candidates, promote, forget, trace, dump.",
+    description: "Branch-aware Observation Journal.",
+    input: { hint: "[on|off|toggle|status|show|add|mark-durable|flush|export|observe|candidates|promote|forget|trace|dump|help]" },
+    subcommands: [
+      { name: "on", description: "Enable journal for this session" },
+      { name: "off", description: "Disable journal for this session" },
+      { name: "toggle", description: "Flip enabled state" },
+      { name: "status", description: "Print current counts and gate state" },
+      { name: "show", description: "Open the full JOURNEY.md in a read-only editor" },
+      { name: "add", description: "Record an observation", usage: "<category> <content>" },
+      { name: "mark-durable", description: "Mark an observation as promotion candidate", usage: "<observationId>" },
+      { name: "flush", description: "Fold recent observations into a journey segment and write JOURNEY.md" },
+      { name: "export", description: "Write JOURNEY.md to a user-supplied path", usage: "<path>" },
+      { name: "observe", description: "Ask the main agent to propose observations next turn" },
+      { name: "candidates", description: "List observations pending Mnemopi promotion" },
+      { name: "promote", description: "Promote a durable observation to Mnemopi (requires confirm)", usage: "[<observationId>]" },
+      { name: "forget", description: "Remove an observation from the candidate pool", usage: "<observationId>" },
+      { name: "trace", description: "Show the recent event trace (in-memory)" },
+      { name: "dump", description: "Show the full internal journal state" },
+      { name: "help", description: "Print full subcommand reference" },
+    ],
     handler: (args, ctx) => handleCommand(pi, ctx, args),
   });
 }
