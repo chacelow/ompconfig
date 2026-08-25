@@ -9,6 +9,7 @@ Private source repository for personal OMP and Claude agent configuration.
 - `skills/`: personally maintained skills
 - `plugins/manifest.yml`: third-party marketplace/plugin declarations
 - `scripts/`: install, sync, and verification commands
+- Matt Pocock Chinese bundle: all 35 upstream skills are vendored; `ask-matt`, `grilling`, and `prototype` contain personal overrides
 
 Runtime databases, sessions, memories, caches, credentials, and machine-local MCP paths are intentionally excluded.
 
@@ -18,7 +19,7 @@ Runtime databases, sessions, memories, caches, credentials, and machine-local MC
 ./scripts/install.sh
 ```
 
-Existing configuration files are copied to timestamped backups before replacement. Third-party plugin installation is best-effort because it requires network access.
+Existing configuration files are copied to timestamped backups before replacement. Installation restores every vendored Skill directly, so the Matt Pocock bundle does not depend on upstream network access. Third-party plugin installation remains best-effort because it requires network access.
 
 ## Capture local changes
 

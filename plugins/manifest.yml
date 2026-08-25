@@ -7,6 +7,15 @@ plugins:
     scope: user
     verifiedVersion: 0.7.0
 
+skillSources:
+  - source: vinvcn/mattpocock-skills-zh-CN
+    scope: global
+    agent: universal
+    skills: all
+    install: npx skills@latest add vinvcn/mattpocock-skills-zh-CN --global --agent universal --skill '*' --copy --yes
+
 notes:
-  - Only unslop-commit, unslop-review, and unslop-file are enabled by omp/agent/config.yml.
+  - All 35 Matt Pocock Chinese skills are vendored under skills/ and enabled by omp/agent/config.yml.
+  - ask-matt, grilling, and prototype contain personal overrides; the remaining skills are full upstream snapshots.
+  - New-machine restore uses the vendored snapshot and does not require the upstream repository; the install command above is retained only for manual upstream refreshes.
   - zhihu, crawl4ai, make-interfaces-feel-better, and vercel-react-best-practices are discovered from external user skill sources and are not vendored here.

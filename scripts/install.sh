@@ -32,9 +32,12 @@ install_tree() {
   cp -R "$source" "$target"
 }
 
+
 install_file "$repo_root/omp/agent/config.yml" "$omp_agent_dir/config.yml"
 install_file "$repo_root/claude/CLAUDE.md" "$claude_dir/CLAUDE.md"
-install_tree "$repo_root/skills/finding-unknowns" "$omp_agent_dir/skills/finding-unknowns"
+for skill_dir in "$repo_root"/skills/*; do
+  install_tree "$skill_dir" "$HOME/.agents/skills/$(basename "$skill_dir")"
+done
 
 if command -v omp >/dev/null 2>&1; then
   omp plugin marketplace add MohamedAbdallah-14/unslop || true

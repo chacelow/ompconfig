@@ -126,5 +126,40 @@ skills:
     - unslop-file
     - zhihu
     - crawl4ai
+    - ask-matt
+    - grilling
+    - prototype
+    - code-review
+    - codebase-design
+    - diagnosing-bugs
+    - domain-modeling
+    - grill-with-docs
+    - implement
+    - improve-codebase-architecture
+    - research
+    - resolving-merge-conflicts
+    - setup-matt-pocock-skills
+    - tdd
+    - to-spec
+    - to-tickets
+    - triage
+    - wayfinder
+    - wizard
+    - git-guardrails-claude-code
+    - migrate-to-shoehorn
+    - scaffold-exercises
+    - setup-pre-commit
+    - grill-me
+    - handoff
+    - teach
+    - to-questionnaire
+    - wait-what
+    - writing-for-agents
+    - claude-handoff
+    - loop-me
+    - setup-ts-deep-modules
+    - writing-beats
+    - writing-fragments
+    - writing-shape
 todo: 
   eager: preferred
