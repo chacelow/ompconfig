@@ -142,13 +142,12 @@ _Last updated: <ISO timestamp>_
 
 ## 7.1 Discoverability
 
-- OMP `available_commands_update` (v17.4.2) 只对 `source: builtin` 命令广播 `subcommands` 和 `input.hint`。extension 命令始终以 `input.hint: "arguments"` 出现在 TUI 下拉里。因此本扩展不依赖下拉子命令提示。
-- 发现路径：
-  - `/journey help` 打印完整子命令表 + category 列表；未知子命令时 warn 也指向它。
-  - `ui.setWidget` 在 gate=off 时显示 `📓 Journal · off · type /journey on to enable`。gate=on 时显示 counts + 分类直方图（`F/D/P/X/≠/C/?`）。
-  - `ui.setStatus("observation-journal", ...)` 在 TUI status line 常驻。
-  - 命令定义中仍附带 `subcommands` 元数据，等 OMP 未来暴露 extension subcommands 时自动生效。
+**正确机制**（此前我判断有误）：OMP TUI 下拉候选按命令 name 前缀匹配。想让 `/journey` 显示 dropdown，必须把每个子命令注册为**独立顶层命令**，用冒号做命名空间（`journey:on`、`journey:add` ...），与 `pua:*`、`skill:*`、`experience-*` 是同一模式。
 
+- 主命令 `journey`：status snapshot + 引导到 help。
+- 16 个兄弟命令 `journey:on|off|toggle|status|show|add|mark-durable|flush|export|observe|candidates|promote|forget|trace|dump|help`，每个 description 独立可见。
+- 未知子命令走主 `/journey <sub>` 老路径，warn 引导 `/journey:help`。
+- `input.hint` 与 `subcommands` 字段：OMP v17.4.2 对 extension 命令不广播（builtin-only），已删除。命名空间方式是唯一有效的路径。
 
 ## 7.2 TUI observability layer
 

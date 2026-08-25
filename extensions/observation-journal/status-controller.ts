@@ -104,7 +104,7 @@ export class StatusController {
     this.lastError = undefined;
     if (this.ui) {
       this.ui.setWidget?.({ placement: "aboveEditor", content: [] });
-      this.ui.setStatus?.("observation-journal", undefined);
+      this.ui.setStatus?.("observation-journal", "");
     }
     this.ui = undefined;
   }
@@ -254,10 +254,11 @@ export class StatusController {
     if (this.lastError) {
       lines.push(`   ${paint(ui.theme, "error", `! ${this.lastError}`)}`);
     }
-    ui.setStatus?.(
-      "observation-journal",
-      this.headline || (this.gauges ? "Journal · gauges" : undefined),
-    );
+    const statusText =
+      this.headline || (this.gauges ? "Journal · gauges" : "");
+    if (statusText.length > 0) {
+      ui.setStatus?.("observation-journal", statusText);
+    }
     ui.setWidget?.({ placement: "aboveEditor", content: lines });
   }
 }

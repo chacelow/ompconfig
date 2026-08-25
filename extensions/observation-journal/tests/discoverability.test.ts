@@ -97,34 +97,32 @@ async function runCommand(
 describe("Discoverability", () => {
 
   beforeEach(() => { _resetStoresForTesting(); });
-  test("journey command registers input hint + full subcommand catalog", () => {
+  test("registers journey plus every journey:sub sibling command", () => {
     const host = createHost();
     observationJournalFactory(host.api);
-    const definition = host.commands.get("journey");
-    expect(definition).toBeDefined();
-    expect(definition?.input?.hint).toBeDefined();
-    expect(definition?.input?.hint).toContain("on|off");
-    expect(definition?.subcommands).toBeDefined();
-    const names = (definition?.subcommands ?? []).map((s) => s.name);
+    expect(host.commands.get("journey")).toBeDefined();
     for (const expected of [
-      "on",
-      "off",
-      "toggle",
-      "status",
-      "show",
-      "add",
-      "mark-durable",
-      "flush",
-      "export",
-      "observe",
-      "candidates",
-      "promote",
-      "forget",
-      "trace",
-      "dump",
-      "help",
+      "journey:on",
+      "journey:off",
+      "journey:toggle",
+      "journey:status",
+      "journey:show",
+      "journey:add",
+      "journey:mark-durable",
+      "journey:flush",
+      "journey:export",
+      "journey:observe",
+      "journey:candidates",
+      "journey:promote",
+      "journey:forget",
+      "journey:trace",
+      "journey:dump",
+      "journey:help",
     ]) {
-      expect(names).toContain(expected);
+      const definition = host.commands.get(expected);
+      expect(definition).toBeDefined();
+      expect(typeof definition?.description).toBe("string");
+      expect(definition?.description?.length ?? 0).toBeGreaterThan(0);
     }
   });
 

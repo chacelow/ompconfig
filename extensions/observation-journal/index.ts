@@ -156,13 +156,15 @@ function notify(
   message: string,
   level: "info" | "warn" | "error" = "info",
 ): void {
-  if (!ctx.hasUI || !ctx.ui?.notify) return;
-  const notifier = ctx.ui.notify;
+  const ui = ctx.ui;
+  if (!ctx.hasUI || !ui?.notify) return;
   if (level === "info") {
-    runtimeFor(ctx).toast.queue(message, "info", (msg, lvl) => notifier(msg, lvl));
+    runtimeFor(ctx).toast.queue(message, "info", (msg, lvl) => {
+      ui.notify?.(msg, lvl);
+    });
     return;
   }
-  notifier(message, level);
+  ui.notify(message, level);
 }
 
 const CATEGORY_ORDER = [
@@ -1038,11 +1040,7 @@ async function handleCommand(
     );
   } finally {
     if (ctx.hasUI && ctx.ui?.notify) {
-      const notifier = ctx.ui.notify;
       runtimeFor(ctx).toast.flush();
-      // flush() only fires when there are pending lines; ensure notifier is set
-      // as the delivery target for future queues.
-      void notifier;
     }
   }
 }
@@ -1109,26 +1107,111 @@ export default function observationJournal(pi: ExtensionAPILike): void {
   });
 
   pi.registerCommand("journey", {
-    description: "Branch-aware Observation Journal.",
-    input: { hint: "[on|off|toggle|status|show|add|mark-durable|flush|export|observe|candidates|promote|forget|trace|dump|help]" },
-    subcommands: [
-      { name: "on", description: "Enable journal for this session" },
-      { name: "off", description: "Disable journal for this session" },
-      { name: "toggle", description: "Flip enabled state" },
-      { name: "status", description: "Print current counts and gate state" },
-      { name: "show", description: "Open the full JOURNEY.md in a read-only editor" },
-      { name: "add", description: "Record an observation", usage: "<category> <content>" },
-      { name: "mark-durable", description: "Mark an observation as promotion candidate", usage: "<observationId>" },
-      { name: "flush", description: "Fold recent observations into a journey segment and write JOURNEY.md" },
-      { name: "export", description: "Write JOURNEY.md to a user-supplied path", usage: "<path>" },
-      { name: "observe", description: "Ask the main agent to propose observations next turn" },
-      { name: "candidates", description: "List observations pending Mnemopi promotion" },
-      { name: "promote", description: "Promote a durable observation to Mnemopi (requires confirm)", usage: "[<observationId>]" },
-      { name: "forget", description: "Remove an observation from the candidate pool", usage: "<observationId>" },
-      { name: "trace", description: "Show the recent event trace (in-memory)" },
-      { name: "dump", description: "Show the full internal journal state" },
-      { name: "help", description: "Print full subcommand reference" },
-    ],
+    description: "Observation Journal · status snapshot (see /journey:help).",
     handler: (args, ctx) => handleCommand(pi, ctx, args),
   });
+  const subcommands: Array<{
+    name: string;
+    description: string;
+    run: (rawArgs: string, ctx: ExtensionContextLike) => Promise<void> | void;
+  }> = [
+    {
+      name: "journey:on",
+      description: "Enable Observation Journal for this session.",
+      run: (_args, ctx) => handleGate(pi, ctx, true),
+    },
+    {
+      name: "journey:off",
+      description: "Disable Observation Journal for this session.",
+      run: (_args, ctx) => handleGate(pi, ctx, false),
+    },
+    {
+      name: "journey:toggle",
+      description: "Flip the journal enabled state.",
+      run: (_args, ctx) => handleGate(pi, ctx, !currentState(ctx).enabled),
+    },
+    {
+      name: "journey:status",
+      description: "Print counts, breakdown, cursor, context and cost.",
+      run: (_args, ctx) => { handleStatus(ctx); },
+    },
+    {
+      name: "journey:show",
+      description: "Open the rendered JOURNEY in a read-only editor.",
+      run: (_args, ctx) => handleShow(ctx),
+    },
+    {
+      name: "journey:add",
+      description: "Record an observation: <category> <content>.",
+      run: (args, ctx) => {
+        const trimmed = (args ?? "").trim();
+        const [cat] = trimmed.split(/\s+/);
+        handleAdd(pi, ctx, cat, trimmed);
+      },
+    },
+    {
+      name: "journey:mark-durable",
+      description: "Mark an observation as a promotion candidate.",
+      run: (args, ctx) => {
+        handleMarkDurable(pi, ctx, (args ?? "").trim() || undefined);
+      },
+    },
+    {
+      name: "journey:flush",
+      description: "Fold recent observations into a segment and write JOURNEY.md.",
+      run: (_args, ctx) => handleFlush(pi, ctx),
+    },
+    {
+      name: "journey:export",
+      description: "Export JOURNEY.md to a user-supplied path.",
+      run: (args, ctx) => handleExport(ctx, (args ?? "").trim()),
+    },
+    {
+      name: "journey:observe",
+      description: "Ask the main agent to propose observations next turn.",
+      run: (_args, ctx) => handleObserve(pi, ctx),
+    },
+    {
+      name: "journey:candidates",
+      description: "List observations pending Mnemopi promotion.",
+      run: (_args, ctx) => handleCandidates(ctx),
+    },
+    {
+      name: "journey:promote",
+      description: "Promote a durable observation to Mnemopi (confirm required).",
+      run: (args, ctx) => handlePromote(pi, ctx, (args ?? "").trim() || undefined),
+    },
+    {
+      name: "journey:forget",
+      description: "Drop an observation from the candidate pool.",
+      run: (args, ctx) => handleForget(pi, ctx, (args ?? "").trim() || undefined),
+    },
+    {
+      name: "journey:trace",
+      description: "Show the recent event trace (in-memory).",
+      run: (_args, ctx) => handleTrace(ctx),
+    },
+    {
+      name: "journey:dump",
+      description: "Show the full internal journal state (JSON).",
+      run: (_args, ctx) => handleDump(ctx),
+    },
+    {
+      name: "journey:help",
+      description: "Print the full subcommand reference.",
+      run: (_args, ctx) => handleHelp(ctx),
+    },
+  ];
+  for (const sub of subcommands) {
+    pi.registerCommand(sub.name, {
+      description: sub.description,
+      handler: async (args, ctx) => {
+        try {
+          await sub.run(args, ctx);
+        } finally {
+          if (ctx.hasUI && ctx.ui?.notify) runtimeFor(ctx).toast.flush();
+        }
+      },
+    });
+  }
 }
