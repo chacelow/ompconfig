@@ -8,6 +8,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import observationJournalFactory from "../index.ts";
+import { _resetStoresForTesting } from "../index.ts";
 import {
   PROMOTION_TYPE,
   type CommandDefinition,
@@ -168,6 +169,8 @@ async function runCommand(
 }
 
 describe("Stage 3 · Mnemopi Promotion", () => {
+
+  beforeEach(() => { _resetStoresForTesting(); });
   let tmpRoot: string;
 
   beforeEach(async () => {

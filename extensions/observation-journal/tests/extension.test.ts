@@ -10,6 +10,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import observationJournalFactory from "../index.ts";
+import { _resetStoresForTesting } from "../index.ts";
 import {
   ENABLED_TYPE,
   OBSERVATION_TYPE,
@@ -137,6 +138,8 @@ async function runCommand(
 }
 
 describe("observation-journal extension", () => {
+
+  beforeEach(() => { _resetStoresForTesting(); });
   let tmpRoot: string;
 
   beforeEach(async () => {

@@ -1,8 +1,9 @@
 // Discoverability verification.
 // Ensures TUI dropdowns and widget hints reveal how the extension is used.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, beforeEach } from "bun:test";
 import observationJournalFactory from "../index.ts";
+import { _resetStoresForTesting } from "../index.ts";
 import {
   type CommandDefinition,
   type EventHandler,
@@ -94,6 +95,8 @@ async function runCommand(
 }
 
 describe("Discoverability", () => {
+
+  beforeEach(() => { _resetStoresForTesting(); });
   test("journey command registers input hint + full subcommand catalog", () => {
     const host = createHost();
     observationJournalFactory(host.api);

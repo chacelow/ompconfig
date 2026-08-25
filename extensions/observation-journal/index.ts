@@ -36,7 +36,23 @@ import {
   renderCompactionInjection,
   renderJourney,
 } from "./journey.ts";
+import {
+  StatusController,
+  ToastCoalescer,
+  type FooterGauges,
+} from "./status-controller.ts";
+import { renderTimelineLines } from "./timeline.ts";
 
+
+/** Test-only: clear all per-session state. Not part of the runtime contract. */
+export function _resetStoresForTesting(): void {
+  for (const runtime of runtimeStore.values()) {
+    runtime.status.detach();
+    runtime.toast.cancel();
+  }
+  runtimeStore.clear();
+  stateStore.clear();
+}
 const LABEL = "Observation Journal";
 const STATUS_KEY = "observation-journal";
 const TRACE_MAX = 50;
@@ -50,6 +66,9 @@ interface TraceEntry {
 // Runtime scratch state, per session id. Not persisted.
 interface RuntimeState {
   trace: TraceEntry[];
+  status: StatusController;
+  toast: ToastCoalescer;
+  attached: boolean;
 }
 
 const stateStore = new Map<string, JournalState>();
@@ -90,7 +109,12 @@ function runtimeFor(ctx: ExtensionContextLike): RuntimeState {
   const sid = sessionIdOf(ctx);
   const cached = runtimeStore.get(sid);
   if (cached) return cached;
-  const fresh: RuntimeState = { trace: [] };
+  const fresh: RuntimeState = {
+    trace: [],
+    status: new StatusController(),
+    toast: new ToastCoalescer(),
+    attached: false,
+  };
   runtimeStore.set(sid, fresh);
   return fresh;
 }
@@ -132,7 +156,13 @@ function notify(
   message: string,
   level: "info" | "warn" | "error" = "info",
 ): void {
-  if (ctx.hasUI && ctx.ui?.notify) ctx.ui.notify(message, level);
+  if (!ctx.hasUI || !ctx.ui?.notify) return;
+  const notifier = ctx.ui.notify;
+  if (level === "info") {
+    runtimeFor(ctx).toast.queue(message, "info", (msg, lvl) => notifier(msg, lvl));
+    return;
+  }
+  notifier(message, level);
 }
 
 const CATEGORY_ORDER = [
@@ -180,6 +210,42 @@ function histogramLines(state: JournalState): string[] {
   return lines;
 }
 
+const TIMELINE_CELLS = 20;
+
+function timelineLine(state: JournalState): string | null {
+  if (state.observations.length === 0 && state.segments.length === 0) {
+    return null;
+  }
+  const events: Array<{ at: number; glyph: string; kind: "obs" | "cut" }> = [];
+  for (const obs of state.observations) {
+    const at = Date.parse(obs.timestamp);
+    if (Number.isFinite(at)) {
+      events.push({ at, glyph: CATEGORY_ICONS[obs.category] ?? "•", kind: "obs" });
+    }
+  }
+  for (const seg of state.segments) {
+    if (seg.title === "Post-compaction snapshot") {
+      const at = Date.parse(seg.timestamp);
+      if (Number.isFinite(at)) events.push({ at, glyph: "│", kind: "cut" });
+    }
+  }
+  if (events.length === 0) return null;
+  events.sort((a, b) => a.at - b.at);
+  const start = events[0].at;
+  const end = Date.now();
+  const span = Math.max(1, end - start);
+  const cells: string[] = Array.from({ length: TIMELINE_CELLS }, () => "·");
+  for (const event of events) {
+    const ratio = (event.at - start) / span;
+    const index = Math.min(TIMELINE_CELLS - 1, Math.max(0, Math.floor(ratio * TIMELINE_CELLS)));
+    // Cut has priority over obs to keep boundaries visible.
+    if (event.kind === "cut" || cells[index] === "·") {
+      cells[index] = event.glyph;
+    }
+  }
+  return cells.join("") + " ▶";
+}
+
 function lastTraceError(ctx: ExtensionContextLike): string | null {
   const runtime = runtimeFor(ctx);
   for (let i = runtime.trace.length - 1; i >= 0; i--) {
@@ -218,38 +284,68 @@ function journalSummaryLine(state: JournalState, pending: number): string {
   return `Journal · ${state.observations.length} obs · ${state.segments.length} seg · ${pending} pending`;
 }
 
+function computeGauges(
+  ctx: ExtensionContextLike,
+  state: JournalState,
+  config: JournalConfig,
+): FooterGauges | undefined {
+  const usage = ctx.getContextUsage?.();
+  const contextTokens = typeof usage?.tokens === "number" ? usage.tokens : 0;
+  const contextMax =
+    typeof usage?.contextWindow === "number" && usage.contextWindow > 0
+      ? usage.contextWindow
+      : Math.max(contextTokens, 1);
+  const durablePending = state.observations.filter(
+    (obs) => obs.durable && !state.promotions.has(obs.id),
+  ).length;
+  return {
+    nextValue: state.observations.length,
+    nextMax: Math.max(state.observations.length, config.recentObservationsMax),
+    poolValue: durablePending,
+    poolMax: Math.max(durablePending, 5),
+    ctxValue: contextTokens,
+    ctxMax: contextMax,
+  };
+}
+
 function refreshObservability(
   ctx: ExtensionContextLike,
   state: JournalState,
 ): void {
+  if (!ctx.hasUI) return;
+  const runtime = runtimeFor(ctx);
+  if (!runtime.attached) {
+    if (ctx.ui) runtime.status.attach(ctx.ui);
+    runtime.attached = true;
+  }
+  const config = loadConfig(ctx);
+  if (!state.enabled) {
+    runtime.status.setHeadline("📓 Journal · off · type /journey on to enable");
+    runtime.status.setHistogram([]);
+    runtime.status.setTimeline([]);
+    runtime.status.setGauges(undefined);
+    runtime.status.setLastError(undefined);
+    return;
+  }
   const durablePending = state.observations.filter(
     (obs) => obs.durable && !state.promotions.has(obs.id),
   ).length;
-  if (!state.enabled) {
-    if (ctx.hasUI) {
-      ctx.ui?.setStatus?.(STATUS_KEY, "Journal · off");
-      ctx.ui?.setWidget?.({
-        placement: "aboveEditor",
-        content: ["📓 Journal · off · type /journey on to enable"],
-      });
-    }
-    return;
-  }
-  const summary = journalSummaryLine(state, durablePending);
-  const bars = histogramLines(state);
-  const footerBits: string[] = [];
-  const usage = formatContextUsage(ctx);
-  if (usage) footerBits.push(usage);
-  const cost = formatCost(ctx);
-  if (cost) footerBits.push(cost);
+  const headline = `📓 Journal · ${state.observations.length} obs · ${state.segments.length} seg · ${durablePending} pending`;
+  runtime.status.setHeadline(headline);
+  runtime.status.setHistogram(histogramLines(state));
+  const branch = ctx.sessionManager?.getBranch?.() ?? [];
+  const contextTokens = ctx.getContextUsage?.()?.tokens ?? 0;
+  runtime.status.setTimeline(
+    renderTimelineLines({
+      state,
+      branch,
+      cellTokens: 5_000,
+      contextTokens,
+    }),
+  );
+  runtime.status.setGauges(computeGauges(ctx, state, config));
   const err = lastTraceError(ctx);
-  if (err) footerBits.push(`err ${err}`);
-  const lines: string[] = [`📓 ${summary}`, ...bars];
-  if (footerBits.length > 0) lines.push(`   ${footerBits.join(" · ")}`);
-  if (ctx.hasUI) {
-    ctx.ui?.setStatus?.(STATUS_KEY, summary);
-    ctx.ui?.setWidget?.({ placement: "aboveEditor", content: lines });
-  }
+  runtime.status.setLastError(err ?? undefined);
 }
 
 function normalizeContent(raw: string): string {
@@ -750,6 +846,8 @@ async function handlePromote(
     return;
   }
   const safeContent = redactSecrets(target.content);
+  const runId = generateId("prom");
+  runtimeFor(ctx).status.workerStart("promote", runId);
   try {
     const result = await memory.save({
       content: safeContent,
@@ -771,6 +869,7 @@ async function handlePromote(
       reviewedAt: new Date().toISOString(),
     });
     trace(pi, ctx, "promote.ok", { id: target.id, memoryId });
+    runtimeFor(ctx).status.workerDone(runId, 1);
     refreshObservability(ctx, currentState(ctx));
     notify(ctx, `Observation ${target.id} promoted${memoryId ? ` as ${memoryId}` : ""}.`);
   } catch (error) {
@@ -782,6 +881,7 @@ async function handlePromote(
       reviewedAt: new Date().toISOString(),
     });
     trace(pi, ctx, "promote.error", { id: target.id, message });
+    runtimeFor(ctx).status.workerError(runId, message);
     notify(ctx, `Promotion of ${target.id} failed: ${message}`, "error");
   }
 }
@@ -900,35 +1000,51 @@ async function handleCommand(
   ctx: ExtensionContextLike,
   rawArgs: string,
 ): Promise<void> {
-  const args = (rawArgs ?? "").trim();
-  const [subcommandRaw, ...restTokens] = args.split(/\s+/);
-  const subcommand = (subcommandRaw ?? "").toLowerCase();
-  const rest = args.slice(subcommandRaw?.length ?? 0).trim();
+  try {
+    const args = (rawArgs ?? "").trim();
+    const [subcommandRaw, ...restTokens] = args.split(/\s+/);
+    const subcommand = (subcommandRaw ?? "").toLowerCase();
+    const rest = args.slice(subcommandRaw?.length ?? 0).trim();
 
-  if (subcommand.length === 0 || subcommand === "status") {
-    handleStatus(ctx);
-    return;
+    if (subcommand.length === 0 || subcommand === "status") {
+      handleStatus(ctx);
+      return;
+    }
+    if (subcommand === "on") return await handleGate(pi, ctx, true);
+    if (subcommand === "off") return await handleGate(pi, ctx, false);
+    if (subcommand === "toggle") {
+      return await handleGate(pi, ctx, !currentState(ctx).enabled);
+    }
+    if (subcommand === "show") return await handleShow(ctx);
+    if (subcommand === "add") return await handleAdd(pi, ctx, restTokens[0], rest);
+    if (subcommand === "mark-durable") {
+      return await handleMarkDurable(pi, ctx, restTokens[0]);
+    }
+    if (subcommand === "flush") return await handleFlush(pi, ctx);
+    if (subcommand === "export") return await handleExport(ctx, rest);
+    if (subcommand === "observe") return await handleObserve(pi, ctx);
+    if (subcommand === "candidates") return await handleCandidates(ctx);
+    if (subcommand === "promote") {
+      return await handlePromote(pi, ctx, restTokens[0]);
+    }
+    if (subcommand === "forget") return await handleForget(pi, ctx, restTokens[0]);
+    if (subcommand === "trace") return await handleTrace(ctx);
+    if (subcommand === "dump") return await handleDump(ctx);
+    if (subcommand === "help" || subcommand === "?") return await handleHelp(ctx);
+    notify(
+      ctx,
+      `Unknown /journey subcommand: ${subcommand}. Try /journey help for the full list.`,
+      "warn",
+    );
+  } finally {
+    if (ctx.hasUI && ctx.ui?.notify) {
+      const notifier = ctx.ui.notify;
+      runtimeFor(ctx).toast.flush();
+      // flush() only fires when there are pending lines; ensure notifier is set
+      // as the delivery target for future queues.
+      void notifier;
+    }
   }
-  if (subcommand === "on") return handleGate(pi, ctx, true);
-  if (subcommand === "off") return handleGate(pi, ctx, false);
-  if (subcommand === "toggle") {
-    return handleGate(pi, ctx, !currentState(ctx).enabled);
-  }
-  if (subcommand === "show") return handleShow(ctx);
-  if (subcommand === "add") return handleAdd(pi, ctx, restTokens[0], rest);
-  if (subcommand === "mark-durable") {
-    return handleMarkDurable(pi, ctx, restTokens[0]);
-  }
-  if (subcommand === "flush") return handleFlush(pi, ctx);
-  if (subcommand === "export") return handleExport(ctx, rest);
-  if (subcommand === "observe") return handleObserve(pi, ctx);
-  if (subcommand === "candidates") return handleCandidates(ctx);
-  if (subcommand === "promote") return handlePromote(pi, ctx, restTokens[0]);
-  if (subcommand === "forget") return handleForget(pi, ctx, restTokens[0]);
-  if (subcommand === "trace") return handleTrace(ctx);
-  if (subcommand === "dump") return handleDump(ctx);
-  if (subcommand === "help" || subcommand === "?") return handleHelp(ctx);
-  notify(ctx, `Unknown /journey subcommand: ${subcommand}`, "warn");
 }
 
 export default function observationJournal(pi: ExtensionAPILike): void {
@@ -961,6 +1077,12 @@ export default function observationJournal(pi: ExtensionAPILike): void {
 
   pi.on("session_shutdown", (_event, ctx) => {
     const sid = sessionIdOf(ctx);
+    const runtime = runtimeStore.get(sid);
+    if (runtime) {
+      runtime.status.detach();
+      runtime.toast.cancel();
+      runtime.attached = false;
+    }
     stateStore.delete(sid);
     runtimeStore.delete(sid);
   });

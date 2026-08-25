@@ -149,6 +149,21 @@ _Last updated: <ISO timestamp>_
   - `ui.setStatus("observation-journal", ...)` 在 TUI status line 常驻。
   - 命令定义中仍附带 `subcommands` 元数据，等 OMP 未来暴露 extension subcommands 时自动生效。
 
+
+## 7.2 TUI observability layer
+
+参照 `references/pi-observational-memory/src/ui/status-controller.ts` 与 `src/ui/timeline.ts` 的做法，扩展在启用时通过 `StatusController` 生成一个多行 widget（`aboveEditor`），四层：
+
+1. Headline: `📓 Journal · N obs · N seg · N pending`
+2. Histogram: 按分类的横向条形图，`█` 填充 + `·` 空位，宽 12 格，按最大值等比缩放。
+3. Timeline: 每格 ≈ 5k tokens，字形 `▒/▓/┊/░/▶`；observation 落在时间位置对应的格子里，多个则用 `▓`；compaction cut 用 `┊`；末尾 `▶` 是当前位置。
+4. Footer gauges: `O▕████░░░░▏ C▕██░░░░░░▏ X▕██████░░▏ $cost`，8 格进度条，超阈值变 warning 色。
+
+`workerStart/Done/Error` 生命周期驱动 4 帧 spinner（`◐◓◑◒`，120ms）+ 5s settle 显示 `✓/✗` + delta。
+
+`ToastCoalescer` 把同 tick 的 info notify 合并成一次 setStatus，避免 OMP `showStatus` 后来居上覆盖。warn/error 直接 fire，不进队列。
+
+所有着色通过 `ctx.ui.theme.fg(color, text)`（可用时），支持 `success/warning/error/dim/muted/accent`；无 theme 时降级为无色。
 ## 6. 安全边界
 
 ### 6.1 项目 Git 工作区

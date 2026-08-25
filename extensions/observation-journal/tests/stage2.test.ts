@@ -9,6 +9,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import observationJournalFactory from "../index.ts";
+import { _resetStoresForTesting } from "../index.ts";
 import {
   DEFAULT_CONFIG,
   OBSERVATION_TYPE,
@@ -134,6 +135,8 @@ async function runCommand(
 }
 
 describe("Stage 2 · Compaction Orientation", () => {
+
+  beforeEach(() => { _resetStoresForTesting(); });
   let tmpRoot: string;
 
   beforeEach(async () => {

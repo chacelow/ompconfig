@@ -126,8 +126,12 @@ export interface SessionManagerLike {
 
 export type SelectChoice = { label: string; value: string; description?: string };
 
+export interface ThemeLike {
+  fg?: (color: string, text: string) => string;
+}
+
 export interface UiLike {
-  notify?: (message: string, level?: "info" | "warn" | "error") => void;
+  notify?: (message: string, level?: "info" | "warn" | "warning" | "error") => void;
   editor?: (options: {
     title?: string;
     content?: string;
@@ -139,11 +143,12 @@ export interface UiLike {
     message?: string;
     choices: SelectChoice[];
   }) => Promise<string | undefined>;
-  setStatus?: (key: string, text: string) => void;
+  setStatus?: (key: string, text: string | undefined) => void;
   setWidget?: (options: {
     placement?: "aboveEditor" | "belowEditor";
     content: string[];
   }) => void;
+  theme?: ThemeLike;
 }
 
 export interface MemoryLike {
