@@ -144,7 +144,6 @@ interface RunSubprocessOptions {
   modelRole?: string;
   modelOverride?: string;
 }
-
 type RunSubprocessFn = (options: RunSubprocessOptions) => Promise<unknown>;
 
 function pickRunSubprocess(pi: ExtensionAPI): RunSubprocessFn | undefined {
@@ -160,7 +159,12 @@ function pickActiveModel(ctx: unknown): ActiveModelInfo | undefined {
 function pickCostUsd(result: unknown): number | undefined {
   if (!result || typeof result !== "object") return undefined;
   const r = result as Record<string, unknown>;
-  const cost = r.cost ?? r.costUsd;
+  // OMP SingleResult exposes cost at usage.cost.total (see
+  // packages/coding-agent/src/task/render.ts:1264). Legacy r.cost / r.costUsd
+  // retained as defence-in-depth.
+  const usage = r.usage as { cost?: { total?: unknown } } | undefined;
+  const nested = usage?.cost?.total;
+  const cost = typeof nested === "number" ? nested : (r.cost ?? r.costUsd);
   if (typeof cost === "number" && Number.isFinite(cost) && cost >= 0) return cost;
   return undefined;
 }
