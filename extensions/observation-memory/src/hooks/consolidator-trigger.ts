@@ -31,7 +31,7 @@ import { nowTimestamp } from "../ledger/serialize.js";
 import { renderIndexFile } from "../memory/index-render.js";
 import { atomicWrite, indexPath, listTopics, readJourney } from "../memory/paths.js";
 import type { Runtime } from "../runtime.js";
-import { buildWorkerArgv, buildWorkerEnv, spawnWorker } from "../spawn/launch.js";
+import { dispatchConsolidatorInProcess } from "../dispatcher.js";
 import { recordWorkerCost } from "./observer-trigger.js";
 
 type TriggerCtx = {
@@ -39,6 +39,8 @@ type TriggerCtx = {
 	ui?: { notify: (message: string, level?: "info" | "warning" | "error") => void };
 	sessionManager: { getBranch: () => Entry[]; getEntries: () => Entry[] };
 	getContextUsage?: () => { tokens: number | null } | undefined;
+	cwd?: string;
+	getModel?: () => { provider?: string; id?: string } | undefined;
 };
 
 let runCounter = 0;
@@ -110,18 +112,28 @@ async function dispatchConsolidator(
 	runtime.status.workerStart("consolidator", runId);
 
 	try {
-		const prompt = buildConsolidatorPrompt(runtime.memoryRoot, promote, runtime.config.journeyTargetTokens);
-		const argv = buildWorkerArgv({
-			model: runtime.config.models.consolidator,
-			sessionName: `om-consolidator-${runId}`,
+		const prompt = buildConsolidatorPrompt(
+			runtime.memoryRoot,
+			promote,
+			runtime.config.journeyTargetTokens,
+		);
+		const result = await dispatchConsolidatorInProcess({
+			pi,
+			ctx,
+			cwd: runtime.memoryRoot,
+			memoryRoot: runtime.memoryRoot,
+			runId,
 			kickoffPrompt: prompt,
+			consolidatorModel: runtime.config.consolidatorModel,
+			signal: controller.signal,
 		});
-		const env = buildWorkerEnv("consolidator", { memoryRoot: runtime.memoryRoot, runId });
-		const exit = await spawnWorker({ argv, cwd: runtime.memoryRoot, env, signal: controller.signal });
-		// Capture cost before the exit-code check so a partial run's spend is still recorded.
-		recordWorkerCost(pi, runtime, ctx, "consolidator", runId);
-		if (exit.code !== 0) {
-			throw new Error(`consolidator exited with code ${exit.code}${exit.stderr ? `: ${exit.stderr.trim().slice(0, 200)}` : ""}`);
+		// Cost captured even on failure so partial spend still records.
+		recordWorkerCost(pi, runtime, ctx, "consolidator", runId, result.costUsd);
+		if (result.error) {
+			throw new Error(result.error);
+		}
+		if (!result.ranSubprocess) {
+			throw new Error("runSubprocess unavailable");
 		}
 
 		// Trust the consolidator: on clean exit it has folded (or discarded) everything we handed it.

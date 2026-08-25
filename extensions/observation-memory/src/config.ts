@@ -30,15 +30,25 @@ export interface Config {
 	journeyTargetTokens: number;
 	/** Max simultaneous in-flight observer subprocesses. */
 	observerConcurrency: number;
-	models: {
-		observer: ConfiguredModel;
-		consolidator: ConfiguredModel;
-	};
+  /**
+   * Observer worker model:
+   *   * `@role` (e.g. `@smol`, `@advisor`) — resolved via OMP modelRoles
+   *   * `provider/id` — full model pattern
+   *   * unset → fallback to the master session's active model
+   */
+  observerModel?: string;
+  /** Consolidator worker model (same shape as `observerModel`). */
+  consolidatorModel?: string;
 	/**
-	 * Resume the agent automatically after a compaction that fired mid-run (a `turn_end` with
-	 * pending tool work). A `turn_end` that is also the run's terminal turn never auto-resumes —
-	 * it stops as if nothing happened. Default true.
+	 * Legacy subprocess-model config. Kept only so existing settings files
+	 * that still specify `models.observer` do not crash the loader. The
+	 * in-process dispatcher ignores this — use `observerModel` /
+	 * `consolidatorModel` instead.
 	 */
+	models?: {
+		observer?: ConfiguredModel;
+		consolidator?: ConfiguredModel;
+	};
 	resumeAfterMidRunCompaction: boolean;
 	/** Power-user setting: disable all triggers (distinct from the on/off gate). */
 	passive: boolean;
@@ -56,10 +66,8 @@ export const DEFAULTS: Config = {
 	journeyTargetTokens: 1_000,
 	observerConcurrency: 4,
 	resumeAfterMidRunCompaction: true,
-	models: {
-		observer: { provider: "openrouter", id: "z-ai/glm-5.3", thinking: "low" },
-		consolidator: { provider: "openrouter", id: "z-ai/glm-5.3", thinking: "medium" },
-	},
+  observerModel: undefined,
+  consolidatorModel: undefined,
 	passive: false,
 	debugLog: false,
 };
@@ -117,12 +125,16 @@ function normalizeSettingsConfig(value: Record<string, unknown>, base: Config): 
 		normalized.resumeAfterMidRunCompaction = value.resumeAfterMidRunCompaction;
 	if (typeof value.passive === "boolean") normalized.passive = value.passive;
 	if (typeof value.debugLog === "boolean") normalized.debugLog = value.debugLog;
-	if (isRecord(value.models)) {
-		normalized.models = {
-			observer: normalizeModel(value.models.observer, base.models.observer),
-			consolidator: normalizeModel(value.models.consolidator, base.models.consolidator),
-		};
-	}
+  const observerModel =
+    typeof value.observerModel === "string" && value.observerModel.trim().length > 0
+      ? value.observerModel.trim()
+      : undefined;
+  const consolidatorModel =
+    typeof value.consolidatorModel === "string" && value.consolidatorModel.trim().length > 0
+      ? value.consolidatorModel.trim()
+      : undefined;
+  if (observerModel !== undefined) normalized.observerModel = observerModel;
+  if (consolidatorModel !== undefined) normalized.consolidatorModel = consolidatorModel;
 	return normalized;
 }
 
@@ -157,10 +169,5 @@ export function loadConfig(cwd: string, env: NodeJS.ProcessEnv = process.env): C
 		...globalConfig,
 		...projectConfig,
 		...envConfig,
-		models: {
-			...DEFAULTS.models,
-			...globalConfig.models,
-			...projectConfig.models,
-		},
 	};
 }

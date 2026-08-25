@@ -20,6 +20,7 @@ import { registerObserverTrigger } from "./hooks/observer-trigger.js";
 import { OM_ENABLED, type Entry } from "./ledger/index.js";
 import { ensureSessionMemory } from "./memory/session.js";
 import { Runtime } from "./runtime.js";
+import { registerConsolidatorTools } from "./consolidator-tools.js";
 
 function readGateFromLedger(branch: Entry[]): boolean {
 	for (let i = branch.length - 1; i >= 0; i--) {
@@ -32,6 +33,10 @@ function readGateFromLedger(branch: Entry[]): boolean {
 }
 
 export default function observationalMemory(pi: ExtensionAPI): void {
+	// Global sandboxed file tools for the consolidator subagent (om_read /
+	// om_write / om_edit / om_ls / om_grep). Root is set per-dispatch by the
+	// dispatcher; registered here once at extension init.
+	registerConsolidatorTools(pi);
 	const runtime = new Runtime();
 
 	function attachIfEnabled(ctx: any): void {
