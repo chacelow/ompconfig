@@ -1,0 +1,10 @@
+{
+  "name": "observation-journal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Branch-aware Observation Journal for OMP sessions. See SPEC.md.",
+  "type": "module",
+  "omp": {
+    "extensions": ["./index.ts"]
+  }
+}

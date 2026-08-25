@@ -1,4 +1,4 @@
-modelRoles: 
+modelRoles:
   smol: cursor-claude/cx/gpt-5.6-terra:medium
   slow: cursor-claude/cx/gpt-5.6-sol:high
   task: cursor-claude/cx/gpt-5.6-terra:medium
@@ -8,47 +8,47 @@ modelRoles:
   designer: cursor-claude/cc/claude-opus-4-8:medium
   advisor: cursor-claude/cx/gpt-5.6-sol:medium
   tiny: cursor-claude/cx/gpt-5.6-terra:off
-  default: cursor-claude/cx/gpt-5.6-sol:high
-display: 
+  default: cursor-claude/cc/claude-opus-4-7:high
+display:
   showTokenUsage: true
   hideToolActivity: false
 hideThinkingBlock: false
-stt: 
+stt:
   modelName: fast
   enabled: false
-memory: 
+memory:
   backend: mnemopi
-images: 
+images:
   blockImages: false
-compaction: 
-  methodOrder: 
+compaction:
+  methodOrder:
     - remote
     - soft
 autoResume: false
 setupVersion: 2
-github: 
+github:
   enabled: true
-task: 
+task:
   enableLsp: true
 defaultThinkingLevel: auto
-theme: 
+theme:
   dark: dark-lunar
   light: dark-lunar
 symbolPreset: nerd
 colorBlindMode: false
-statusLine: 
+statusLine:
   preset: default
   transparent: false
   compactThinkingLevel: true
-disabledExtensions: 
+disabledExtensions:
   []
-disabledProviders: 
+disabledProviders:
   - codex
   - omp-managed
   - cursor
-providers: 
+providers:
   fetch: native
-  webSearchOrder: 
+  webSearchOrder:
     - exa
     - perplexity
     - gemini
@@ -73,48 +73,48 @@ providers:
     - mojeek
     - public
   memoryModel: qwen3-1.7b
-loop: 
+loop:
   mode: prompt
-features: 
+features:
   unexpectedStopDetection: true
-autolearn: 
+autolearn:
   enabled: true
-advisor: 
+advisor:
   enabled: false
-browser: 
+browser:
   headless: true
-checkpoint: 
+checkpoint:
   enabled: true
-inspect_image: 
+inspect_image:
   mode: "off"
-terminal: 
+terminal:
   showProgress: true
   showImages: true
-tui: 
+tui:
   tight: true
   renderMermaid: true
-read: 
+read:
   defaultLimit: 300
-lsp: 
+lsp:
   formatOnWrite: false
-extensions: 
+extensions:
   - ~/code/omp-image-tasks
-dev: 
+dev:
   autoqaConsent: granted
-mnemopi: 
+mnemopi:
   embeddingVariant: multilingual
   llmMode: smol
   llmModel: ""
-astGrep: 
+astGrep:
   enabled: true
 interruptMode: wait
 followUpMode: all
 steeringMode: all
 omitThinking: true
-error: 
+error:
   notify: "on"
 textVerbosity: high
-composer: 
+composer:
   shape: claude
 skills:
   includeSkills:
@@ -162,5 +162,5 @@ skills:
     - writing-fragments
     - writing-shape
     - youtube-transcript
-todo: 
+todo:
   eager: preferred

@@ -39,6 +39,20 @@ for skill_dir in "$repo_root"/skills/*; do
   install_tree "$skill_dir" "$HOME/.agents/skills/$(basename "$skill_dir")"
 done
 
+extensions_root="$repo_root/extensions"
+if [[ -d "$extensions_root" ]]; then
+  for src in "$extensions_root"/*; do
+    [[ -d "$src" ]] || continue
+    name="$(basename "$src")"
+    dest="$omp_agent_dir/extensions/$name"
+    mkdir -p "$(dirname "$dest")"
+    rm -rf "$dest"
+    cp -R "$src" "$dest"
+    # SPEC/tests/tsconfig are repo-only, do not install into runtime.
+    rm -rf "$dest/SPEC.md" "$dest/tests" "$dest/tsconfig.json"
+  done
+fi
+
 if command -v uv >/dev/null 2>&1; then
   uv tool install yt-dlp || echo "Warning: yt-dlp installation failed" >&2
 elif ! command -v yt-dlp >/dev/null 2>&1; then

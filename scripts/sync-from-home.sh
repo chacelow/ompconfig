@@ -37,4 +37,29 @@ for skill in "${matt_skills[@]}"; do
   }
 done
 
+extensions_root="$repo_root/extensions"
+mkdir -p "$extensions_root"
+for extension in observation-journal; do
+  src="$omp_agent_dir/extensions/$extension"
+  if [[ ! -d "$src" ]]; then
+    echo "Missing tracked extension: $extension" >&2
+    exit 1
+  fi
+  dest="$extensions_root/$extension"
+  # Preserve local SPEC.md, tests/, tsconfig.json — they live in repo only.
+  local_spec="$dest/SPEC.md"
+  local_tests="$dest/tests"
+  local_tsconfig="$dest/tsconfig.json"
+  spec_backup="$(mktemp -d)"
+  [[ -f "$local_spec" ]] && cp -p "$local_spec" "$spec_backup/SPEC.md"
+  [[ -d "$local_tests" ]] && cp -R "$local_tests" "$spec_backup/tests"
+  [[ -f "$local_tsconfig" ]] && cp -p "$local_tsconfig" "$spec_backup/tsconfig.json"
+  rm -rf "$dest"
+  cp -R "$src" "$dest"
+  [[ -f "$spec_backup/SPEC.md" ]] && cp -p "$spec_backup/SPEC.md" "$dest/SPEC.md"
+  [[ -d "$spec_backup/tests" ]] && cp -R "$spec_backup/tests" "$dest/tests"
+  [[ -f "$spec_backup/tsconfig.json" ]] && cp -p "$spec_backup/tsconfig.json" "$dest/tsconfig.json"
+  rm -rf "$spec_backup"
+done
+
 echo "Updated tracked configuration. Review with: git diff --check && git diff"

@@ -11,6 +11,7 @@ Private source repository for personal OMP and Claude agent configuration.
 - `scripts/`: install, sync, and verification commands
 - Matt Pocock Chinese bundle: all 35 upstream skills are vendored; `ask-matt`, `grilling`, and `prototype` contain personal overrides
 - `youtube-transcript`: vendored from `amosblomqvist/pi-config`, adapted for multilingual captions; requires `yt-dlp`
+- `extensions/observation-journal/`: branch-aware Observation Journal extension with SPEC + tests; disabled by default per session (`/journey on` to activate)
 
 Runtime databases, sessions, memories, caches, credentials, and machine-local MCP paths are intentionally excluded.
 
