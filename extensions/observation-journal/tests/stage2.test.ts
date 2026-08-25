@@ -221,7 +221,7 @@ describe("Stage 2 · Compaction Orientation", () => {
       latest && typeof latest === "object" && "title" in latest
         ? String((latest as { title: unknown }).title)
         : "",
-    ).toBe("Post-compaction snapshot");
+    ).toBe("压缩后快照");
   });
 
   test("/journey observe queues a nextTurn sendUserMessage and touches nothing else", async () => {
@@ -233,9 +233,7 @@ describe("Stage 2 · Compaction Orientation", () => {
     await runCommand(host, "journey", "observe", ctx);
     expect(host.sentMessages.length).toBe(1);
     expect(host.sentMessages[0].options?.deliverAs).toBe("nextTurn");
-    expect(host.sentMessages[0].content).toContain(
-      "Observation Journal request",
-    );
+    expect(host.sentMessages[0].content).toContain("观察日志请求");
     expect(
       host.appendedEntries.filter((entry) => entry.customType === OBSERVATION_TYPE),
     ).toHaveLength(0);

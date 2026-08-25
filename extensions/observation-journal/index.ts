@@ -18,6 +18,7 @@ import {
   PROMOTION_TYPE,
   SEGMENT_TYPE,
   isObservationCategory,
+  type CommandArgumentCompletion,
   type CompactingResult,
   type ExtensionAPILike,
   type ExtensionContextLike,
@@ -226,7 +227,7 @@ function timelineLine(state: JournalState): string | null {
     }
   }
   for (const seg of state.segments) {
-    if (seg.title === "Post-compaction snapshot") {
+    if (seg.title === "压缩后快照") {
       const at = Date.parse(seg.timestamp);
       if (Number.isFinite(at)) events.push({ at, glyph: "│", kind: "cut" });
     }
@@ -283,7 +284,7 @@ function formatCost(ctx: ExtensionContextLike): string | null {
 }
 
 function journalSummaryLine(state: JournalState, pending: number): string {
-  return `Journal · ${state.observations.length} obs · ${state.segments.length} seg · ${pending} pending`;
+  return `观察 ${state.observations.length} · Segment ${state.segments.length} · 待提升 ${pending}`;
 }
 
 function computeGauges(
@@ -322,7 +323,7 @@ function refreshObservability(
   }
   const config = loadConfig(ctx);
   if (!state.enabled) {
-    runtime.status.setHeadline("📓 Journal · off · type /journey on to enable");
+    runtime.status.setHeadline("📓 Journey · 未启用 · 运行 /journey on 启用");
     runtime.status.setHistogram([]);
     runtime.status.setTimeline([]);
     runtime.status.setGauges(undefined);
@@ -332,7 +333,7 @@ function refreshObservability(
   const durablePending = state.observations.filter(
     (obs) => obs.durable && !state.promotions.has(obs.id),
   ).length;
-  const headline = `📓 Journal · ${state.observations.length} obs · ${state.segments.length} seg · ${durablePending} pending`;
+  const headline = `📓 观察 ${state.observations.length} · Segment ${state.segments.length} · 待提升 ${durablePending}`;
   runtime.status.setHeadline(headline);
   runtime.status.setHistogram(histogramLines(state));
   const branch = ctx.sessionManager?.getBranch?.() ?? [];
@@ -402,7 +403,7 @@ function loadConfig(ctx: ExtensionContextLike): JournalConfig {
 function requireEnabled(ctx: ExtensionContextLike): JournalState | null {
   const state = currentState(ctx);
   if (!state.enabled) {
-    notify(ctx, "Observation Journal is disabled. Run /journey on to enable.");
+    notify(ctx, "观察日志当前关闭。运行 /journey on 启用。");
     return null;
   }
   return state;
@@ -420,7 +421,7 @@ function summariseRecent(state: JournalState): JourneySegment {
   return {
     id: generateId("seg"),
     timestamp: new Date().toISOString(),
-    title: "Manual flush",
+    title: "手动 flush",
     body: redactSecrets(body),
     sourceObservationIds: recent.map((obs) => obs.id),
   };
@@ -499,13 +500,13 @@ function handleGate(
 ): void {
   const state = currentState(ctx);
   if (state.enabled === next) {
-    notify(ctx, `Observation Journal already ${next ? "on" : "off"}.`);
+    notify(ctx, `观察日志已处于${next ? "启用" : "关闭"}状态。`);
     return;
   }
   persistGate(pi, ctx, next);
   trace(pi, ctx, "gate", { enabled: next });
   refreshObservability(ctx, currentState(ctx));
-  notify(ctx, `Observation Journal ${next ? "enabled" : "disabled"}.`);
+  notify(ctx, `观察日志已${next ? "启用" : "关闭"}。`);
 }
 
 function handleStatus(ctx: ExtensionContextLike): void {
@@ -525,22 +526,22 @@ function handleStatus(ctx: ExtensionContextLike): void {
     (sum, seg) => sum + seg.body.length,
     0,
   );
-  const usage = formatContextUsage(ctx) ?? "ctx n/a";
-  const cost = formatCost(ctx) ?? "cost n/a";
-  const err = lastTraceError(ctx) ?? "none";
+  const usage = formatContextUsage(ctx) ?? "ctx 不可用";
+  const cost = formatCost(ctx) ?? "cost 不可用";
+  const err = lastTraceError(ctx) ?? "无";
   const cursor = state.cursor
     ? `${state.cursor.coversUpToEntryId} (+${state.cursor.tokensSince}t)`
-    : "(none)";
+    : "无";
   const runtime = runtimeFor(ctx);
   const lines = [
-    `Observation Journal · ${state.enabled ? "ON" : "OFF"}`,
-    `  observations: ${state.observations.length}  (pending: ${durablePending}, promoted: ${promoted})`,
-    `  breakdown:    ${breakdown || "—"}`,
-    `  segments:     ${state.segments.length}  (journey body ${journeySize} chars)`,
-    `  cursor:       ${cursor}`,
-    `  trace events: ${runtime.trace.length}  last-error: ${err}`,
-    `  context:      ${usage}`,
-    `  cost:         ${cost}`,
+    `观察日志 · ${state.enabled ? "启用" : "关闭"}`,
+    `  观察数：      ${state.observations.length}  （待提升 ${durablePending}，已提升 ${promoted}）`,
+    `  分类分布：    ${breakdown || "—"}`,
+    `  Segment：     ${state.segments.length}  （Journey 正文 ${journeySize} 字符）`,
+    `  Cursor：      ${cursor}`,
+    `  Trace：       ${runtime.trace.length} 条  最近错误：${err}`,
+    `  上下文：      ${usage}`,
+    `  成本：        ${cost}`,
   ];
   notify(ctx, lines.join("\n"));
 }
@@ -548,7 +549,7 @@ function handleStatus(ctx: ExtensionContextLike): void {
 async function handleShow(ctx: ExtensionContextLike): Promise<void> {
   const state = currentState(ctx);
   if (!state.enabled) {
-    notify(ctx, "Enable Observation Journal first: /journey on");
+    notify(ctx, "请先运行 /journey on 启用观察日志。");
     return;
   }
   const config = loadConfig(ctx);
@@ -560,10 +561,10 @@ async function handleShow(ctx: ExtensionContextLike): Promise<void> {
     now: new Date().toISOString(),
   });
   if (ctx.ui?.editor) {
-    await ctx.ui.editor({ title: "Journey", content: body, readOnly: true });
+    await ctx.ui.editor({ title: "观察日志", content: body, readOnly: true });
     return;
   }
-  notify(ctx, `Journey (${body.length} bytes):\n${body}`);
+  notify(ctx, `Journey（${body.length} 字节）：\n${body}`);
 }
 
 function handleAdd(
@@ -585,13 +586,13 @@ function handleAdd(
   }
   const contentRaw = rest.slice(category.length).trim();
   if (contentRaw.length === 0) {
-    notify(ctx, "Observation content is required.", "warn");
+    notify(ctx, "观察内容不能为空。", "warn");
     return;
   }
   if (isImperative(contentRaw)) {
     notify(
       ctx,
-      "Observations must describe events, not issue instructions. Reword and retry.",
+      "观察必须描述已发生的事实，不能是命令句式。请改写后重试。",
       "warn",
     );
     return;
@@ -600,7 +601,7 @@ function handleAdd(
   if (!evidenceEntryId) {
     notify(
       ctx,
-      "No evidence entry available; refusing to write observation.",
+      "找不到证据 entry，拒绝写入观察。",
       "warn",
     );
     return;
@@ -618,7 +619,7 @@ function handleAdd(
   persistObservation(pi, ctx, observation);
   trace(pi, ctx, `add.${category}`, { id: observation.id });
   refreshObservability(ctx, currentState(ctx));
-  notify(ctx, `Observation ${observation.id} recorded (${category}).`);
+  notify(ctx, `已记录观察 ${observation.id}（${category}）。`);
 }
 
 function handleMarkDurable(
@@ -629,23 +630,23 @@ function handleMarkDurable(
   const state = requireEnabled(ctx);
   if (!state) return;
   if (!observationId) {
-    notify(ctx, "Usage: /journey mark-durable <observationId>", "warn");
+    notify(ctx, "用法：/journey mark-durable <观察 id>", "warn");
     return;
   }
   const target = state.observations.find((obs) => obs.id === observationId);
   if (!target) {
-    notify(ctx, `Observation ${observationId} not found.`, "warn");
+    notify(ctx, `未找到观察 ${observationId}。`, "warn");
     return;
   }
   if (target.durable) {
-    notify(ctx, `Observation ${observationId} already durable.`);
+    notify(ctx, `观察 ${observationId} 已是待提升候选。`);
     return;
   }
   const updated: Observation = { ...target, durable: true };
   persistObservation(pi, ctx, updated);
   trace(pi, ctx, "mark-durable", { id: observationId });
   refreshObservability(ctx, currentState(ctx));
-  notify(ctx, `Observation ${observationId} marked durable.`);
+  notify(ctx, `已把观察 ${observationId} 标记为待提升候选。`);
 }
 
 async function handleFlush(
@@ -670,8 +671,8 @@ async function handleFlush(
   notify(
     ctx,
     written
-      ? `Segment ${segment.id} recorded; JOURNEY.md written to ${written}.`
-      : `Segment ${segment.id} recorded; artifacts dir unavailable.`,
+      ? `已记录 segment ${segment.id}；JOURNEY.md 落盘到 ${written}。`
+      : `已记录 segment ${segment.id}；无 artifacts 目录，跳过磁盘落地。`,
   );
 }
 
@@ -683,7 +684,7 @@ async function handleExport(
   if (!state) return;
   const target = rest.trim();
   if (target.length === 0) {
-    notify(ctx, "Usage: /journey export <path>", "warn");
+    notify(ctx, "用法：/journey export <路径>", "warn");
     return;
   }
   const config = loadConfig(ctx);
@@ -697,7 +698,7 @@ async function handleExport(
   const resolved = path.resolve(target);
   await fs.mkdir(path.dirname(resolved), { recursive: true });
   await fs.writeFile(resolved, body, "utf8");
-  notify(ctx, `Journey exported to ${resolved}.`);
+  notify(ctx, `Journey 已导出到 ${resolved}。`);
 }
 
 async function handleObserve(
@@ -707,19 +708,19 @@ async function handleObserve(
   const state = requireEnabled(ctx);
   if (!state) return;
   const brief =
-    "Observation Journal request: read the recent turn, then propose at most 5 short observations using this exact response shape (one per line, no markdown):\n" +
-    "  <category> :: <short factual sentence>\n" +
-    "categories: fact | decision | preference | failed-attempt | deviation | constraint | open-question\n" +
-    "For each proposed line, ask me to confirm and, on confirmation, invoke `/journey add <category> <content>`. Never write imperative or instructional prose.";
+    "观察日志请求：请阅读最近一轮对话，按下面的**精确格式**（一行一条，不用 markdown）提出至多 5 条观察：\n" +
+    "  <category> :: <短事实句>\n" +
+    "category 从 fact | decision | preference | failed-attempt | deviation | constraint | open-question 里选。\n" +
+    "每一条先让我确认，我确认后再调用 `/journey add <category> <content>`。绝不写命令句式或指令式的话。";
   if (typeof pi.sendUserMessage === "function") {
     await pi.sendUserMessage(brief, { deliverAs: "nextTurn" });
     trace(pi, ctx, "observe.request", {});
-    notify(ctx, "Observation request queued for the next turn.");
+    notify(ctx, "已把观察请求排入下一轮，由主 Agent 提出候选。");
     return;
   }
   notify(
     ctx,
-    "sendUserMessage is not available in this host; run `/journey add` manually.",
+    "当前 host 不支持 sendUserMessage；请手动运行 `/journey add`。",
     "warn",
   );
 }
@@ -756,13 +757,13 @@ async function handleCandidates(ctx: ExtensionContextLike): Promise<void> {
   if (!state) return;
   const candidates = candidateObservations(state);
   if (candidates.length === 0) {
-    notify(ctx, "No pending promotion candidates. Use /journey mark-durable first.");
+    notify(ctx, "暂无待提升候选。请先 /journey mark-durable。");
     return;
   }
   const lines = candidates.map(
     (obs) => `- ${obs.id} [${obs.category}] ${obs.content}`,
   );
-  notify(ctx, `${candidates.length} candidate(s):\n${lines.join("\n")}`);
+  notify(ctx, `共 ${candidates.length} 个候选：\n${lines.join("\n")}`);
 }
 
 async function handlePromote(
@@ -776,7 +777,7 @@ async function handlePromote(
   const candidates = candidateObservations(state);
   if (!targetId) {
     if (candidates.length === 0) {
-      notify(ctx, "No pending promotion candidates.");
+      notify(ctx, "暂无待提升候选。");
       return;
     }
     if (typeof ctx.ui?.select === "function") {
@@ -786,52 +787,52 @@ async function handlePromote(
         description: `id=${obs.id} durable=true`,
       }));
       targetId = await ctx.ui.select({
-        title: "Promote observation",
-        message: "Select the observation to promote to Mnemopi.",
+        title: "提升观察到 Mnemopi",
+        message: "选择一条要写入 Mnemopi 的观察。",
         choices,
       });
       if (!targetId) {
-        notify(ctx, "Promotion cancelled.");
+        notify(ctx, "提升已取消。");
         return;
       }
     } else {
-      notify(ctx, "Usage: /journey promote <observationId>", "warn");
+      notify(ctx, "用法：/journey promote <观察 id>", "warn");
       return;
     }
   }
   const target = state.observations.find((obs) => obs.id === targetId);
   if (!target) {
-    notify(ctx, `Observation ${targetId} not found.`, "warn");
+    notify(ctx, `未找到观察 ${targetId}。`, "warn");
     return;
   }
   if (!target.durable) {
     notify(
       ctx,
-      `Observation ${targetId} is not marked durable; run /journey mark-durable first.`,
+      `观察 ${targetId} 未标记为待提升；请先 /journey mark-durable。`,
       "warn",
     );
     return;
   }
   const already = state.promotions.get(targetId);
   if (already && already.status === "promoted") {
-    notify(ctx, `Observation ${targetId} already promoted (memoryId=${already.memoryId ?? "?"}).`);
+    notify(ctx, `观察 ${targetId} 已提升过（memoryId=${already.memoryId ?? "?"}）。`);
     return;
   }
   if (typeof ctx.ui?.confirm === "function") {
     const ok = await ctx.ui.confirm(
-      "Promote to Mnemopi?",
+      "是否写入 Mnemopi？",
       `[${target.category}] ${target.content}`,
     );
     if (!ok) {
       persistPromotion(pi, ctx, {
         observationId: target.id,
         status: "skipped",
-        note: "user declined confirm",
+        note: "用户拒绝了 confirm",
         reviewedAt: new Date().toISOString(),
       });
       trace(pi, ctx, "promote.skipped", { id: target.id });
       refreshObservability(ctx, currentState(ctx));
-      notify(ctx, `Promotion of ${target.id} declined.`);
+      notify(ctx, `已取消提升 ${target.id}。`);
       return;
     }
   }
@@ -840,11 +841,11 @@ async function handlePromote(
     persistPromotion(pi, ctx, {
       observationId: target.id,
       status: "failed",
-      note: "memory backend unavailable",
+      note: "Memory 后端不可用",
       reviewedAt: new Date().toISOString(),
     });
     trace(pi, ctx, "promote.failed", { id: target.id, reason: "no-backend" });
-    notify(ctx, "Memory backend unavailable; promotion recorded as failed.", "warn");
+    notify(ctx, "Memory 后端不可用；已记录为 failed。", "warn");
     return;
   }
   const safeContent = redactSecrets(target.content);
@@ -873,7 +874,7 @@ async function handlePromote(
     trace(pi, ctx, "promote.ok", { id: target.id, memoryId });
     runtimeFor(ctx).status.workerDone(runId, 1);
     refreshObservability(ctx, currentState(ctx));
-    notify(ctx, `Observation ${target.id} promoted${memoryId ? ` as ${memoryId}` : ""}.`);
+    notify(ctx, `观察 ${target.id} 已写入 Mnemopi${memoryId ? `（memoryId=${memoryId}）` : ""}。`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     persistPromotion(pi, ctx, {
@@ -884,7 +885,7 @@ async function handlePromote(
     });
     trace(pi, ctx, "promote.error", { id: target.id, message });
     runtimeFor(ctx).status.workerError(runId, message);
-    notify(ctx, `Promotion of ${target.id} failed: ${message}`, "error");
+    notify(ctx, `提升 ${target.id} 失败：${message}`, "error");
   }
 }
 
@@ -896,39 +897,39 @@ async function handleForget(
   const state = requireEnabled(ctx);
   if (!state) return;
   if (!observationId) {
-    notify(ctx, "Usage: /journey forget <observationId>", "warn");
+    notify(ctx, "用法：/journey forget <观察 id>", "warn");
     return;
   }
   const target = state.observations.find((obs) => obs.id === observationId);
   if (!target) {
-    notify(ctx, `Observation ${observationId} not found.`, "warn");
+    notify(ctx, `未找到观察 ${observationId}。`, "warn");
     return;
   }
   if (typeof ctx.ui?.confirm === "function") {
     const ok = await ctx.ui.confirm(
-      "Forget observation?",
+      "确认丢弃这条观察？",
       `[${target.category}] ${target.content}`,
     );
     if (!ok) {
-      notify(ctx, "Forget cancelled.");
+      notify(ctx, "取消丢弃。");
       return;
     }
   }
   persistPromotion(pi, ctx, {
     observationId: target.id,
     status: "skipped",
-    note: "manually forgotten",
+    note: "手动丢弃",
     reviewedAt: new Date().toISOString(),
   });
   trace(pi, ctx, "forget", { id: target.id });
   refreshObservability(ctx, currentState(ctx));
-  notify(ctx, `Observation ${target.id} marked forgotten (won't reappear as candidate).`);
+  notify(ctx, `观察 ${target.id} 已丢弃（不会再出现在候选中）。`);
 }
 
 async function handleTrace(ctx: ExtensionContextLike): Promise<void> {
   const runtime = runtimeFor(ctx);
   if (runtime.trace.length === 0) {
-    notify(ctx, "Trace is empty.");
+    notify(ctx, "事件轨迹为空。");
     return;
   }
   const lines = runtime.trace.map((entry) => {
@@ -937,10 +938,10 @@ async function handleTrace(ctx: ExtensionContextLike): Promise<void> {
   });
   const body = lines.join("\n");
   if (ctx.ui?.editor) {
-    await ctx.ui.editor({ title: "Journey trace", content: body, readOnly: true });
+    await ctx.ui.editor({ title: "事件轨迹", content: body, readOnly: true });
     return;
   }
-  notify(ctx, `Trace (${runtime.trace.length} events):\n${body}`);
+  notify(ctx, `事件轨迹（${runtime.trace.length} 条）：\n${body}`);
 }
 
 async function handleDump(ctx: ExtensionContextLike): Promise<void> {
@@ -956,42 +957,43 @@ async function handleDump(ctx: ExtensionContextLike): Promise<void> {
   };
   const body = JSON.stringify(dump, null, 2);
   if (ctx.ui?.editor) {
-    await ctx.ui.editor({ title: "Journey dump", content: body, readOnly: true });
+    await ctx.ui.editor({ title: "内部状态", content: body, readOnly: true });
     return;
   }
-  notify(ctx, `Dump (${body.length} bytes):\n${body}`);
+  notify(ctx, `内部状态（${body.length} 字节）：\n${body}`);
 }
 
 const HELP_LINES: string[] = [
-  "Observation Journal — /journey subcommands",
+  "观察日志 · /journey 子命令",
   "",
-  "  /journey                              status snapshot",
-  "  /journey on | off | toggle            gate control",
-  "  /journey status                       print counts + gate state",
-  "  /journey show                         open full JOURNEY.md",
-  "  /journey add <cat> <content>          record an observation",
-  "  /journey mark-durable <id>            mark as promotion candidate",
-  "  /journey flush                        fold into segment + write JOURNEY.md",
-  "  /journey export <path>                copy JOURNEY.md to <path>",
-  "  /journey observe                      queue an observation request",
-  "  /journey candidates                   list durable pending",
-  "  /journey promote [<id>]               promote to Mnemopi (confirm required)",
-  "  /journey forget <id>                  drop from candidates",
-  "  /journey trace                        recent event trace",
-  "  /journey dump                         full internal state",
-  "  /journey help                         this reference",
+  "  /journey                              打印状态快照",
+  "  /journey on | off | toggle            启用 / 关闭 / 翻转",
+  "  /journey status                       计数、分类、上下文、成本",
+  "  /journey show                         打开完整 JOURNEY 只读视图",
+  "  /journey add <分类> <内容>            记录一条观察",
+  "  /journey mark-durable <id>            标记为待提升候选",
+  "  /journey flush                        合并成 segment 并落盘",
+  "  /journey export <路径>                导出 JOURNEY.md 到指定路径",
+  "  /journey observe                      让主 Agent 提出观察候选",
+  "  /journey candidates                   列出待提升候选",
+  "  /journey promote [<id>]               写入 Mnemopi（需要 confirm）",
+  "  /journey forget <id>                  从候选池丢弃",
+  "  /journey trace                        最近事件轨迹",
+  "  /journey dump                         内部完整状态（JSON）",
+  "  /journey help                         本帮助",
   "",
-  "Categories:",
-  "  fact | decision | preference | failed-attempt |",
-  "  deviation | constraint | open-question",
+  "分类：",
+  "  fact（事实） | decision（决定） | preference（偏好） |",
+  "  failed-attempt（失败） | deviation（偏离） | constraint（约束） |",
+  "  open-question（未决）",
   "",
-  "Defaults: OFF per session. Promotion is manual only.",
+  "默认每次会话关闭。提升到 Mnemopi 只走手动路径。",
 ];
 
 async function handleHelp(ctx: ExtensionContextLike): Promise<void> {
   const body = HELP_LINES.join("\n");
   if (ctx.ui?.editor) {
-    await ctx.ui.editor({ title: "Journey help", content: body, readOnly: true });
+    await ctx.ui.editor({ title: "帮助", content: body, readOnly: true });
     return;
   }
   notify(ctx, body);
@@ -1035,7 +1037,7 @@ async function handleCommand(
     if (subcommand === "help" || subcommand === "?") return await handleHelp(ctx);
     notify(
       ctx,
-      `Unknown /journey subcommand: ${subcommand}. Try /journey help for the full list.`,
+      `未知子命令：${subcommand}。运行 /journey help 查看完整列表。`,
       "warn",
     );
   } finally {
@@ -1100,137 +1102,59 @@ export default function observationJournal(pi: ExtensionAPILike): void {
     const summary = summariseRecent(state);
     persistSegment(pi, ctx, {
       ...summary,
-      title: "Post-compaction snapshot",
+      title: "压缩后快照",
     });
     trace(pi, ctx, "session_compact", { segmentId: summary.id });
     refreshObservability(ctx, currentState(ctx));
   });
 
+  const SUBCOMMAND_MENU: CommandArgumentCompletion[] = [
+    { label: "on", value: "on", description: "启用当前会话的观察日志" },
+    { label: "off", value: "off", description: "关闭当前会话的观察日志" },
+    { label: "toggle", value: "toggle", description: "翻转启用状态" },
+    { label: "status", value: "status", description: "打印计数、分类、上下文和成本" },
+    { label: "show", value: "show", description: "以只读方式打开当前 Journey" },
+    { label: "add", value: "add ", description: "记录一条观察：<分类> <内容>" },
+    { label: "mark-durable", value: "mark-durable ", description: "把一条观察标记为待提升候选" },
+    { label: "flush", value: "flush", description: "把最近观察合并成 segment 并落盘 JOURNEY.md" },
+    { label: "export", value: "export ", description: "把 JOURNEY.md 导出到指定路径" },
+    { label: "observe", value: "observe", description: "让主 Agent 在下一轮提出观察候选" },
+    { label: "candidates", value: "candidates", description: "列出待写入 Mnemopi 的候选" },
+    { label: "promote", value: "promote", description: "把 durable 观察写入 Mnemopi（需要 confirm）" },
+    { label: "forget", value: "forget ", description: "从候选池丢弃某条观察" },
+    { label: "trace", value: "trace", description: "查看最近的事件轨迹" },
+    { label: "dump", value: "dump", description: "以 JSON 打印内部状态" },
+    { label: "help", value: "help", description: "打印全部子命令说明" },
+  ];
+
+  function completionsFor(prefix: string): CommandArgumentCompletion[] | null {
+    const trimmed = prefix.trimStart();
+    // 一旦输入含空格，说明已经进入某个子命令的参数区，交给该子命令自己补全。
+    if (trimmed.includes(" ")) return null;
+    const query = trimmed.toLowerCase();
+    const match = SUBCOMMAND_MENU.filter((item) =>
+      item.label.startsWith(query),
+    );
+    return match.length > 0 ? match : null;
+  }
+
+  function inlineHintFor(prefix: string): string | null {
+    const trimmed = prefix.trim();
+    if (trimmed.length === 0) return "<子命令>";
+    const [head, ...rest] = trimmed.split(/\s+/);
+    if (rest.length === 0) return null;
+    if (head === "add") return "<分类> <内容>";
+    if (head === "mark-durable") return "<观察 id>";
+    if (head === "promote") return "[<观察 id>]";
+    if (head === "forget") return "<观察 id>";
+    if (head === "export") return "<路径>";
+    return null;
+  }
+
   pi.registerCommand("journey", {
-    description: "Branch-aware Observation Journal.",
-    input: { hint: "[on|off|toggle|status|show|add|mark-durable|flush|export|observe|candidates|promote|forget|trace|dump|help]" },
-    subcommands: [
-      { name: "on", description: "Enable Observation Journal for this session" },
-      { name: "off", description: "Disable Observation Journal for this session" },
-      { name: "toggle", description: "Flip the enabled state" },
-      { name: "status", description: "Print counts, breakdown, cursor, context and cost" },
-      { name: "show", description: "Open the rendered JOURNEY in a read-only editor" },
-      { name: "add", description: "Record an observation", usage: "<category> <content>" },
-      { name: "mark-durable", description: "Mark an observation as a promotion candidate", usage: "<observationId>" },
-      { name: "flush", description: "Fold recent observations into a segment + write JOURNEY.md" },
-      { name: "export", description: "Export JOURNEY.md to a user-supplied path", usage: "<path>" },
-      { name: "observe", description: "Ask the main agent to propose observations next turn" },
-      { name: "candidates", description: "List observations pending Mnemopi promotion" },
-      { name: "promote", description: "Promote a durable observation to Mnemopi (confirm required)", usage: "[<observationId>]" },
-      { name: "forget", description: "Drop an observation from the candidate pool", usage: "<observationId>" },
-      { name: "trace", description: "Show the recent event trace" },
-      { name: "dump", description: "Show the full internal journal state (JSON)" },
-      { name: "help", description: "Print the full subcommand reference" },
-    ],
+    description: "分支感知的观察日志（Observation Journal）。",
+    getInlineHint: inlineHintFor,
+    getArgumentCompletions: completionsFor,
     handler: (args, ctx) => handleCommand(pi, ctx, args),
   });
-  const subcommands: Array<{
-    name: string;
-    description: string;
-    run: (rawArgs: string, ctx: ExtensionContextLike) => Promise<void> | void;
-  }> = [
-    {
-      name: "journey:on",
-      description: "Enable Observation Journal for this session.",
-      run: (_args, ctx) => handleGate(pi, ctx, true),
-    },
-    {
-      name: "journey:off",
-      description: "Disable Observation Journal for this session.",
-      run: (_args, ctx) => handleGate(pi, ctx, false),
-    },
-    {
-      name: "journey:toggle",
-      description: "Flip the journal enabled state.",
-      run: (_args, ctx) => handleGate(pi, ctx, !currentState(ctx).enabled),
-    },
-    {
-      name: "journey:status",
-      description: "Print counts, breakdown, cursor, context and cost.",
-      run: (_args, ctx) => { handleStatus(ctx); },
-    },
-    {
-      name: "journey:show",
-      description: "Open the rendered JOURNEY in a read-only editor.",
-      run: (_args, ctx) => handleShow(ctx),
-    },
-    {
-      name: "journey:add",
-      description: "Record an observation: <category> <content>.",
-      run: (args, ctx) => {
-        const trimmed = (args ?? "").trim();
-        const [cat] = trimmed.split(/\s+/);
-        handleAdd(pi, ctx, cat, trimmed);
-      },
-    },
-    {
-      name: "journey:mark-durable",
-      description: "Mark an observation as a promotion candidate.",
-      run: (args, ctx) => {
-        handleMarkDurable(pi, ctx, (args ?? "").trim() || undefined);
-      },
-    },
-    {
-      name: "journey:flush",
-      description: "Fold recent observations into a segment and write JOURNEY.md.",
-      run: (_args, ctx) => handleFlush(pi, ctx),
-    },
-    {
-      name: "journey:export",
-      description: "Export JOURNEY.md to a user-supplied path.",
-      run: (args, ctx) => handleExport(ctx, (args ?? "").trim()),
-    },
-    {
-      name: "journey:observe",
-      description: "Ask the main agent to propose observations next turn.",
-      run: (_args, ctx) => handleObserve(pi, ctx),
-    },
-    {
-      name: "journey:candidates",
-      description: "List observations pending Mnemopi promotion.",
-      run: (_args, ctx) => handleCandidates(ctx),
-    },
-    {
-      name: "journey:promote",
-      description: "Promote a durable observation to Mnemopi (confirm required).",
-      run: (args, ctx) => handlePromote(pi, ctx, (args ?? "").trim() || undefined),
-    },
-    {
-      name: "journey:forget",
-      description: "Drop an observation from the candidate pool.",
-      run: (args, ctx) => handleForget(pi, ctx, (args ?? "").trim() || undefined),
-    },
-    {
-      name: "journey:trace",
-      description: "Show the recent event trace (in-memory).",
-      run: (_args, ctx) => handleTrace(ctx),
-    },
-    {
-      name: "journey:dump",
-      description: "Show the full internal journal state (JSON).",
-      run: (_args, ctx) => handleDump(ctx),
-    },
-    {
-      name: "journey:help",
-      description: "Print the full subcommand reference.",
-      run: (_args, ctx) => handleHelp(ctx),
-    },
-  ];
-  for (const sub of subcommands) {
-    pi.registerCommand(sub.name, {
-      description: sub.description,
-      handler: async (args, ctx) => {
-        try {
-          await sub.run(args, ctx);
-        } finally {
-          if (ctx.hasUI && ctx.ui?.notify) runtimeFor(ctx).toast.flush();
-        }
-      },
-    });
-  }
 }

@@ -255,7 +255,7 @@ export class StatusController {
       lines.push(`   ${paint(ui.theme, "error", `! ${this.lastError}`)}`);
     }
     const statusText =
-      this.headline || (this.gauges ? "Journal · gauges" : "");
+      this.headline || (this.gauges ? "观察日志（无标题）" : "");
     if (statusText.length > 0) {
       ui.setStatus?.("observation-journal", statusText);
     }

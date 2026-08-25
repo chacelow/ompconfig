@@ -189,7 +189,7 @@ describe("Stage 3 · Mnemopi Promotion", () => {
     await runCommand(host, "journey", "on", ctx);
     await runCommand(host, "journey", "add decision test decision A", ctx);
     await runCommand(host, "journey", "candidates", ctx);
-    expect(notifications.at(-1)?.message).toContain("No pending promotion candidates");
+    expect(notifications.at(-1)?.message).toContain("暂无待提升候选");
     expect(memoryCalls.length).toBe(0);
   });
 
@@ -227,7 +227,7 @@ describe("Stage 3 · Mnemopi Promotion", () => {
     const record = promotionEntries[0].data as PromotionRecord;
     expect(record.status).toBe("promoted");
     expect(record.memoryId).toBeDefined();
-    expect(notifications.at(-1)?.message).toContain("promoted");
+    expect(notifications.at(-1)?.message).toContain("已写入 Mnemopi");
   });
 
   test("declining confirm records status=skipped and does NOT touch memory", async () => {
@@ -274,7 +274,7 @@ describe("Stage 3 · Mnemopi Promotion", () => {
     expect(selectPrompts.length).toBe(1);
     expect(selectPrompts[0].choices.some((c) => c.value === cId)).toBe(true);
     expect(memoryCalls.length).toBe(0);
-    expect(notifications.at(-1)?.message).toContain("cancelled");
+    expect(notifications.at(-1)?.message).toContain("提升已取消");
   });
 
   test("memory backend unavailable → status=failed, no crash", async () => {
@@ -298,8 +298,8 @@ describe("Stage 3 · Mnemopi Promotion", () => {
       (entry) => entry.customType === PROMOTION_TYPE,
     )?.data as PromotionRecord;
     expect(record.status).toBe("failed");
-    expect(record.note).toContain("unavailable");
-    expect(notifications.some((n) => n.message.includes("unavailable"))).toBe(true);
+    expect(record.note).toContain("不可用");
+    expect(notifications.some((n) => n.message.includes("不可用"))).toBe(true);
   });
 
   test("promote redacts secrets before writing to memory", async () => {
@@ -344,7 +344,7 @@ describe("Stage 3 · Mnemopi Promotion", () => {
     await runCommand(host, "journey", `forget ${obsId}`, ctx);
     await runCommand(host, "journey", "candidates", ctx);
     expect(memoryCalls.length).toBe(0);
-    expect(notifications.at(-1)?.message).toContain("No pending promotion candidates");
+    expect(notifications.at(-1)?.message).toContain("暂无待提升候选");
   });
 
   test("widget and status reflect state", async () => {
@@ -352,11 +352,11 @@ describe("Stage 3 · Mnemopi Promotion", () => {
     observationJournalFactory(host.api);
     const { ctx, widgetContent, statusLines } = createFakeContext(host);
     await fireEvent(host, "session_start", ctx);
-    expect(widgetContent[0]).toContain("off");
+    expect(widgetContent[0]).toContain("未启用");
     await runCommand(host, "journey", "on", ctx);
     await runCommand(host, "journey", "add decision widget test", ctx);
-    expect(widgetContent[0]).toContain("1 obs");
-    expect(statusLines.at(-1)).toContain("1 obs");
+    expect(widgetContent[0]).toContain("观察 1");
+    expect(statusLines.at(-1)).toContain("观察 1");
   });
 
   test("trace records lifecycle and command events", async () => {

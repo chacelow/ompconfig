@@ -199,11 +199,28 @@ export interface CommandSubdefinition {
   usage?: string;
 }
 
+export interface CommandArgumentCompletion {
+  label: string;
+  value: string;
+  description?: string;
+}
+
 export interface CommandDefinition {
   description: string;
   aliases?: string[];
   input?: { hint?: string };
   subcommands?: CommandSubdefinition[];
+  allowArgs?: boolean;
+  getInlineHint?: (
+    prefix: string,
+  ) => string | null | undefined | Promise<string | null | undefined>;
+  getArgumentCompletions?: (
+    prefix: string,
+  ) =>
+    | CommandArgumentCompletion[]
+    | null
+    | undefined
+    | Promise<CommandArgumentCompletion[] | null | undefined>;
   handler: (args: string, ctx: ExtensionContextLike) => Promise<void> | void;
 }
 

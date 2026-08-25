@@ -44,6 +44,16 @@ const CATEGORY_LETTERS: Record<string, string> = {
   "open-question": "?",
 };
 
+const CATEGORY_NAMES: Record<string, string> = {
+  fact: "事实",
+  decision: "决定",
+  preference: "偏好",
+  "failed-attempt": "失败",
+  deviation: "偏离",
+  constraint: "约束",
+  "open-question": "未决",
+};
+
 function fmtK(tokens: number): string {
   if (tokens < 1000) return `${tokens}`;
   return `${(tokens / 1000).toFixed(1)}k`;
@@ -147,14 +157,14 @@ export function renderTimelineLines(input: TimelineInput): string[] {
   for (const category of CATEGORY_ORDER) {
     const count = totals[category] ?? 0;
     if (count > 0) {
-      legendParts.push(`${CATEGORY_LETTERS[category]} ${category} (${count})`);
+      legendParts.push(`${CATEGORY_LETTERS[category]} ${CATEGORY_NAMES[category] ?? category} (${count})`);
     }
   }
-  legendParts.push(`${GLYPH.cut} cut (${cutCells.size})`);
-  legendParts.push(`${GLYPH.tip} tip`);
+  legendParts.push(`${GLYPH.cut} 切片 (${cutCells.size})`);
+  legendParts.push(`${GLYPH.tip} 当前`);
 
   return [
-    `Journey timeline · 1 cell ≈ ${fmtK(cellTokens)} tok · ${state.observations.length} obs · ${cutCells.size} cut${cutCells.size === 1 ? "" : "s"}`,
+    `Journey 时间轴 · 每格 ≈ ${fmtK(cellTokens)} tok · 观察 ${state.observations.length} · 切片 ${cutCells.size}`,
     strip,
     legendParts.join("   "),
   ];

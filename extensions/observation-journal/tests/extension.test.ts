@@ -177,7 +177,7 @@ describe("observation-journal extension", () => {
     await runCommand(host, "journey", "add fact tried something", ctx);
     expect(host.appendedEntries).toHaveLength(0);
     expect(
-      notifications.some((entry) => entry.message.includes("disabled")),
+      notifications.some((entry) => entry.message.includes("关闭")),
     ).toBe(true);
   });
 
@@ -196,7 +196,7 @@ describe("observation-journal extension", () => {
     ).toHaveLength(0);
     expect(
       notifications.some((entry) =>
-        entry.message.includes("describe events, not issue instructions"),
+        entry.message.includes("不能是命令句式"),
       ),
     ).toBe(true);
   });
@@ -263,8 +263,8 @@ describe("observation-journal extension", () => {
     // Sanity: status notification lists 3 observations.
     await runCommand(host, "journey", "status", ctx);
     const statusMessage = notifications.at(-1)?.message ?? "";
-    expect(statusMessage).toContain("observations: 3");
-    expect(statusMessage).toContain("segments:     1");
+    expect(statusMessage).toContain("观察数：      3");
+    expect(statusMessage).toContain("Segment：     1");
   });
 
   test("redaction runs on stored content", async () => {
@@ -319,7 +319,7 @@ describe("observation-journal extension", () => {
     await fireEvent(host, "session_branch", ctxB.ctx);
     await runCommand(host, "journey", "status", ctxB.ctx);
     const statusB = ctxB.notifications.at(-1)?.message ?? "";
-    expect(statusB).toContain("observations: 0");
-    expect(statusB).toContain("OFF");
+    expect(statusB).toContain("观察数：      0");
+    expect(statusB).toContain("观察日志 · 关闭");
   });
 });

@@ -97,32 +97,22 @@ async function runCommand(
 describe("Discoverability", () => {
 
   beforeEach(() => { _resetStoresForTesting(); });
-  test("registers journey plus every journey:sub sibling command", () => {
+  test("registers /journey with getArgumentCompletions", () => {
     const host = createHost();
     observationJournalFactory(host.api);
-    expect(host.commands.get("journey")).toBeDefined();
+    const definition = host.commands.get("journey");
+    expect(definition).toBeDefined();
+    expect(typeof definition?.getArgumentCompletions).toBe("function");
+    const completions = definition?.getArgumentCompletions?.("");
+    expect(Array.isArray(completions) ? completions.length : 0).toBeGreaterThan(10);
+    const labels = (completions as Array<{ label: string }>).map((c) => c.label);
     for (const expected of [
-      "journey:on",
-      "journey:off",
-      "journey:toggle",
-      "journey:status",
-      "journey:show",
-      "journey:add",
-      "journey:mark-durable",
-      "journey:flush",
-      "journey:export",
-      "journey:observe",
-      "journey:candidates",
-      "journey:promote",
-      "journey:forget",
-      "journey:trace",
-      "journey:dump",
-      "journey:help",
+      "on", "off", "toggle", "status", "show",
+      "add", "mark-durable", "flush", "export",
+      "observe", "candidates", "promote", "forget",
+      "trace", "dump", "help",
     ]) {
-      const definition = host.commands.get(expected);
-      expect(definition).toBeDefined();
-      expect(typeof definition?.description).toBe("string");
-      expect(definition?.description?.length ?? 0).toBeGreaterThan(0);
+      expect(labels).toContain(expected);
     }
   });
 
@@ -132,7 +122,7 @@ describe("Discoverability", () => {
     const { ctx, widgets } = createFakeContext(host);
     await fire(host, "session_start", ctx);
     const last = widgets.at(-1) ?? [];
-    expect(last.join(" ")).toContain("off");
+    expect(last.join(" ")).toContain("未启用");
     expect(last.join(" ")).toContain("/journey on");
   });
 
@@ -146,7 +136,7 @@ describe("Discoverability", () => {
     await runCommand(host, "add preference alpha preference", ctx);
     await runCommand(host, "add open-question alpha question", ctx);
     const last = widgets.at(-1) ?? [];
-    expect(last[0]).toContain("3 obs");
+    expect(last[0]).toContain("观察 3");
     const joined = last.join("\n");
     expect(joined).toMatch(/D █+·*\s+1/);
     expect(joined).toMatch(/P █+·*\s+1/);
@@ -162,7 +152,7 @@ describe("Discoverability", () => {
     const body = notifications.at(-1)?.message ?? "";
     for (const line of [
       "/journey on | off | toggle",
-      "/journey add <cat>",
+      "/journey add <分类>",
       "/journey mark-durable",
       "/journey flush",
       "/journey export",
