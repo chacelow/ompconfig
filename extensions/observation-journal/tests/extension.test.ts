@@ -322,4 +322,43 @@ describe("observation-journal extension", () => {
     expect(statusB).toContain("观察数：      0");
     expect(statusB).toContain("观察日志 · 关闭");
   });
+
+  test("defaultEnabled: true 时 session_start 自动 enable", async () => {
+    const host = createHost();
+    observationJournalFactory(host.api);
+    const { ctx } = createFakeContext(host);
+    (ctx as { settings?: unknown }).settings = {
+      get: (name: string) =>
+        name === "observationJournal" ? { defaultEnabled: true } : undefined,
+    };
+    await fireEvent(host, "session_start", ctx);
+    const enabledEntries = host.appendedEntries.filter(
+      (entry) => entry.customType === ENABLED_TYPE,
+    );
+    expect(enabledEntries).toHaveLength(1);
+    expect((enabledEntries[0].data as { enabled: boolean }).enabled).toBe(true);
+  });
+
+  test("defaultEnabled 不覆盖已有的 /journey off", async () => {
+    const host = createHost();
+    observationJournalFactory(host.api);
+    const { ctx, branch } = createFakeContext(host);
+    // 预填 off entry 模拟用户主动关过
+    branch.push({
+      type: "custom",
+      id: "e0",
+      customType: ENABLED_TYPE,
+      data: { enabled: false },
+    });
+    (ctx as { settings?: unknown }).settings = {
+      get: (name: string) =>
+        name === "observationJournal" ? { defaultEnabled: true } : undefined,
+    };
+    await fireEvent(host, "session_start", ctx);
+    const enabledEntries = host.appendedEntries.filter(
+      (entry) => entry.customType === ENABLED_TYPE,
+    );
+    // 不追加新 entry，保持用户显式的 off 状态
+    expect(enabledEntries).toHaveLength(0);
+  });
 });

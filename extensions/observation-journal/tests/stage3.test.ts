@@ -347,17 +347,6 @@ describe("Stage 3 · Mnemopi Promotion", () => {
     expect(notifications.at(-1)?.message).toContain("暂无待提升候选");
   });
 
-  test("widget and status reflect state", async () => {
-    const host = createHost();
-    observationJournalFactory(host.api);
-    const { ctx, widgetContent, statusLines } = createFakeContext(host);
-    await fireEvent(host, "session_start", ctx);
-    expect(widgetContent[0]).toContain("未启用");
-    await runCommand(host, "journey", "on", ctx);
-    await runCommand(host, "journey", "add decision widget test", ctx);
-    expect(widgetContent[0]).toContain("观察 1");
-    expect(statusLines.at(-1)).toContain("观察 1");
-  });
 
   test("trace records lifecycle and command events", async () => {
     const host = createHost();

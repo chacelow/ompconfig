@@ -43,16 +43,34 @@ import {
   type FooterGauges,
 } from "./status-controller.ts";
 import { renderTimelineLines } from "./timeline.ts";
+import {
+  dispatchObserver,
+  extractObservations,
+  type DispatchObserverResult,
+  type ObserverResultObservation,
+} from "./observer.ts";
 
 
 /** Test-only: clear all per-session state. Not part of the runtime contract. */
 export function _resetStoresForTesting(): void {
   for (const runtime of runtimeStore.values()) {
-    runtime.status.detach();
     runtime.toast.cancel();
   }
   runtimeStore.clear();
   stateStore.clear();
+}
+
+/**
+ * Test-only: await 当前 session 上正在跑的 observer dispatch。
+ * Turn_end handler 出于设计是 fire-and-forget（不能阻塞主循环），
+ * 但测试要断言 dispatch 结束，通过这个 hook 拿到 promise 直接 await。
+ */
+export async function _awaitPendingObserverForTesting(
+  sessionId: string,
+): Promise<DispatchObserverResult | null> {
+  const runtime = runtimeStore.get(sessionId);
+  if (!runtime?.observerPromise) return null;
+  return await runtime.observerPromise;
 }
 const LABEL = "Observation Journal";
 const STATUS_KEY = "observation-journal";
@@ -70,6 +88,21 @@ interface RuntimeState {
   status: StatusController;
   toast: ToastCoalescer;
   attached: boolean;
+  /** 上一次 observer dispatch 时 usage.tokens 的值；用于阈值-间隔判断。 */
+  lastObserverTokens: number;
+  /** 当前是否有 observer subagent 在跑。用于避免重叠。 */
+  observerInFlight: boolean;
+  /** 最近一次 observer 结果摘要（供 /journey status 展示）。 */
+  lastObserver?: {
+    at: string;
+    added: number;
+    modelHint?: string;
+    error?: string;
+  };
+  /** observer 中止句柄。 */
+  observerAbort?: AbortController;
+  /** 当前 in-flight dispatch 的 promise，供测试 await。 */
+  observerPromise?: Promise<DispatchObserverResult>;
 }
 
 const stateStore = new Map<string, JournalState>();
@@ -106,6 +139,16 @@ function artifactsDirOf(ctx: ExtensionContextLike): string | undefined {
   );
 }
 
+/**
+ * 从 ctx.getContextUsage() 取当前 context tokens 计数，缺失当 0。
+ * observer 触发和 dispatch 后 lastObserverTokens 记录都用这个入口，
+ * 避免俩地方语义漂移。
+ */
+function pickCurrentTokens(ctx: ExtensionContextLike): number {
+  const usage = ctx.getContextUsage?.();
+  return typeof usage?.tokens === "number" ? usage.tokens : 0;
+}
+
 function runtimeFor(ctx: ExtensionContextLike): RuntimeState {
   const sid = sessionIdOf(ctx);
   const cached = runtimeStore.get(sid);
@@ -115,6 +158,8 @@ function runtimeFor(ctx: ExtensionContextLike): RuntimeState {
     status: new StatusController(),
     toast: new ToastCoalescer(),
     attached: false,
+    lastObserverTokens: 0,
+    observerInFlight: false,
   };
   runtimeStore.set(sid, fresh);
   return fresh;
@@ -312,43 +357,11 @@ function computeGauges(
 }
 
 function refreshObservability(
-  ctx: ExtensionContextLike,
-  state: JournalState,
+  _ctx: ExtensionContextLike,
+  _state: JournalState,
 ): void {
-  if (!ctx.hasUI) return;
-  const runtime = runtimeFor(ctx);
-  if (!runtime.attached) {
-    if (ctx.ui) runtime.status.attach(ctx.ui);
-    runtime.attached = true;
-  }
-  const config = loadConfig(ctx);
-  if (!state.enabled) {
-    runtime.status.setHeadline("📓 Journey · 未启用 · 运行 /journey on 启用");
-    runtime.status.setHistogram([]);
-    runtime.status.setTimeline([]);
-    runtime.status.setGauges(undefined);
-    runtime.status.setLastError(undefined);
-    return;
-  }
-  const durablePending = state.observations.filter(
-    (obs) => obs.durable && !state.promotions.has(obs.id),
-  ).length;
-  const headline = `📓 观察 ${state.observations.length} · Segment ${state.segments.length} · 待提升 ${durablePending}`;
-  runtime.status.setHeadline(headline);
-  runtime.status.setHistogram(histogramLines(state));
-  const branch = ctx.sessionManager?.getBranch?.() ?? [];
-  const contextTokens = ctx.getContextUsage?.()?.tokens ?? 0;
-  runtime.status.setTimeline(
-    renderTimelineLines({
-      state,
-      branch,
-      cellTokens: 5_000,
-      contextTokens,
-    }),
-  );
-  runtime.status.setGauges(computeGauges(ctx, state, config));
-  const err = lastTraceError(ctx);
-  runtime.status.setLastError(err ?? undefined);
+  // 用户明确要求不要常驻 widget：所有状态通过 /journey status 获取。
+  // 保留函数签名以便未来重新引入或做诊断，但当前不做任何 UI 写入。
 }
 
 function normalizeContent(raw: string): string {
@@ -372,10 +385,22 @@ function loadConfig(ctx: ExtensionContextLike): JournalConfig {
     ? patternsRaw.filter((entry): entry is string => typeof entry === "string")
     : DEFAULT_CONFIG.promotion.autoWhitelistPatterns;
   return {
+    defaultEnabled:
+      typeof source.defaultEnabled === "boolean"
+        ? source.defaultEnabled
+        : DEFAULT_CONFIG.defaultEnabled,
     observeEveryTokens:
       typeof source.observeEveryTokens === "number"
         ? source.observeEveryTokens
         : DEFAULT_CONFIG.observeEveryTokens,
+    autoObserveEnabled:
+      typeof source.autoObserveEnabled === "boolean"
+        ? source.autoObserveEnabled
+        : DEFAULT_CONFIG.autoObserveEnabled,
+    observerModel:
+      typeof source.observerModel === "string" && source.observerModel.trim().length > 0
+        ? source.observerModel.trim()
+        : DEFAULT_CONFIG.observerModel,
     journeyMaxSegments:
       typeof source.journeyMaxSegments === "number"
         ? source.journeyMaxSegments
@@ -407,6 +432,16 @@ function requireEnabled(ctx: ExtensionContextLike): JournalState | null {
     return null;
   }
   return state;
+}
+
+function hasGateEntry(ctx: ExtensionContextLike): boolean {
+  const branch = ctx.sessionManager?.getBranch?.() ?? [];
+  return branch.some(
+    (entry) =>
+      entry.type === "custom" &&
+      "customType" in entry &&
+      (entry as { customType?: unknown }).customType === ENABLED_TYPE,
+  );
 }
 
 function summariseRecent(state: JournalState): JourneySegment {
@@ -457,6 +492,145 @@ function persistSegment(
   pi.appendEntry(SEGMENT_TYPE, segment);
   currentState(ctx).segments.push(segment);
 }
+
+// ---------- Auto observer (subagent) helpers ----------
+
+const OBSERVER_CHUNK_MAX_ENTRIES = 60;
+const OBSERVER_CHUNK_MAX_BYTES = 12_000;
+
+/**
+ * Best-effort chunk text builder: 从 branch 里挑最近的 N 条非-custom entry，
+ * 每条压平为一行短 JSON。observer 需要片段感（谁说了什么、用了什么工具），
+ * 不需要 pretty print。
+ */
+function serializeRecentChunk(ctx: ExtensionContextLike): string {
+  const branch = ctx.sessionManager?.getBranch?.() ?? [];
+  const slice = branch.slice(-OBSERVER_CHUNK_MAX_ENTRIES);
+  const lines: string[] = [];
+  let total = 0;
+  for (const entry of slice) {
+    if (entry.type === "custom") continue;
+    let payload: string;
+    try {
+      payload = JSON.stringify({ type: entry.type, data: entry.data });
+    } catch {
+      payload = JSON.stringify({ type: entry.type });
+    }
+    if (payload.length > 1500) payload = payload.slice(0, 1500) + "…";
+    total += payload.length + 1;
+    if (total > OBSERVER_CHUNK_MAX_BYTES) break;
+    lines.push(payload);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * 把 observer 返回的一条观察落地到 ledger。分类不合法就丢弃，源信息记为 subagent。
+ */
+function persistObserverObservation(
+  pi: ExtensionAPILike,
+  ctx: ExtensionContextLike,
+  raw: ObserverResultObservation,
+): boolean {
+  const category = raw.category.trim();
+  if (!isObservationCategory(category)) return false;
+  const text = normalizeContent(raw.text);
+  if (text.length === 0) return false;
+  const observation: Observation = {
+    id: generateId("obs"),
+    timestamp: new Date().toISOString(),
+    sessionId: sessionIdOf(ctx),
+    category,
+    content: text,
+    evidenceEntryIds: [evidenceEntryIdOf(ctx) ?? ""].filter((s) => s.length > 0),
+    durable: false,
+    source: "subagent",
+  };
+  persistObservation(pi, ctx, observation);
+  return true;
+}
+
+/**
+ * 触发一次 observer subagent。in-flight guard、trace、状态、通知全在这里。
+ * 调用方需保证 config.autoObserveEnabled 已 gated。
+ */
+function triggerAutoObserver(
+  pi: ExtensionAPILike,
+  ctx: ExtensionContextLike,
+  reason: "threshold" | "manual",
+): Promise<DispatchObserverResult> {
+  const runtime = runtimeFor(ctx);
+  if (runtime.observerInFlight) {
+    return Promise.resolve({
+      observations: [],
+      ranSubprocess: false,
+      error: "已有 observer 在跑",
+    });
+  }
+  const chunkText = serializeRecentChunk(ctx);
+  if (chunkText.length === 0) {
+    return Promise.resolve({
+      observations: [],
+      ranSubprocess: false,
+      error: "无可观察内容",
+    });
+  }
+  const config = loadConfig(ctx);
+  const abort = new AbortController();
+  runtime.observerAbort = abort;
+  runtime.observerInFlight = true;
+  runtime.lastObserverTokens = pickCurrentTokens(ctx);
+  trace(pi, ctx, "observer.dispatch", {
+    reason,
+    chunkBytes: chunkText.length,
+    observerModel: config.observerModel ?? "(fallback:session-active)",
+  });
+
+  const promise = (async (): Promise<DispatchObserverResult> => {
+    let result: DispatchObserverResult;
+    try {
+      result = await dispatchObserver({
+        pi,
+        ctx,
+        chunkText,
+        observerModel: config.observerModel,
+        signal: abort.signal,
+      });
+    } finally {
+      runtime.observerInFlight = false;
+      runtime.observerAbort = undefined;
+      runtime.observerPromise = undefined;
+    }
+    if (result.error) {
+      runtime.lastObserver = {
+        at: new Date().toISOString(),
+        added: 0,
+        modelHint: result.modelHint,
+        error: result.error,
+      };
+      trace(pi, ctx, "observer.error", { error: result.error });
+      return result;
+    }
+    let added = 0;
+    for (const raw of result.observations) {
+      if (persistObserverObservation(pi, ctx, raw)) added += 1;
+    }
+    runtime.lastObserver = {
+      at: new Date().toISOString(),
+      added,
+      modelHint: result.modelHint,
+    };
+    trace(pi, ctx, "observer.done", {
+      added,
+      total: result.observations.length,
+      modelHint: result.modelHint,
+    });
+    return result;
+  })();
+  runtime.observerPromise = promise;
+  return promise;
+}
+
 
 function persistGate(
   pi: ExtensionAPILike,
@@ -725,6 +899,36 @@ async function handleObserve(
   );
 }
 
+async function handleObserveNow(
+  pi: ExtensionAPILike,
+  ctx: ExtensionContextLike,
+): Promise<void> {
+  const state = requireEnabled(ctx);
+  if (!state) return;
+  const runtime = runtimeFor(ctx);
+  if (runtime.observerInFlight) {
+    notify(ctx, "已有 observer 在跑，请稍候。", "warn");
+    return;
+  }
+  notify(ctx, "正在后台派发 observer subagent…");
+  const result = await triggerAutoObserver(pi, ctx, "manual");
+  if (!result.ranSubprocess) {
+    notify(ctx, `Observer 未运行：${result.error ?? "未知原因"}`, "warn");
+    return;
+  }
+  if (result.error) {
+    notify(ctx, `Observer 出错：${result.error}`, "error");
+    return;
+  }
+  const added = result.observations.length;
+  notify(
+    ctx,
+    added === 0
+      ? "Observer 完成：无新增观察。"
+      : `Observer 完成：新增 ${added} 条观察（模型：${result.modelHint ?? "?"}）。`,
+  );
+}
+
 function handleCompacting(
   pi: ExtensionAPILike,
   ctx: ExtensionContextLike,
@@ -849,8 +1053,6 @@ async function handlePromote(
     return;
   }
   const safeContent = redactSecrets(target.content);
-  const runId = generateId("prom");
-  runtimeFor(ctx).status.workerStart("promote", runId);
   try {
     const result = await memory.save({
       content: safeContent,
@@ -872,7 +1074,6 @@ async function handlePromote(
       reviewedAt: new Date().toISOString(),
     });
     trace(pi, ctx, "promote.ok", { id: target.id, memoryId });
-    runtimeFor(ctx).status.workerDone(runId, 1);
     refreshObservability(ctx, currentState(ctx));
     notify(ctx, `观察 ${target.id} 已写入 Mnemopi${memoryId ? `（memoryId=${memoryId}）` : ""}。`);
   } catch (error) {
@@ -884,7 +1085,6 @@ async function handlePromote(
       reviewedAt: new Date().toISOString(),
     });
     trace(pi, ctx, "promote.error", { id: target.id, message });
-    runtimeFor(ctx).status.workerError(runId, message);
     notify(ctx, `提升 ${target.id} 失败：${message}`, "error");
   }
 }
@@ -1027,6 +1227,7 @@ async function handleCommand(
     if (subcommand === "flush") return await handleFlush(pi, ctx);
     if (subcommand === "export") return await handleExport(ctx, rest);
     if (subcommand === "observe") return await handleObserve(pi, ctx);
+    if (subcommand === "observe-now") return await handleObserveNow(pi, ctx);
     if (subcommand === "candidates") return await handleCandidates(ctx);
     if (subcommand === "promote") {
       return await handlePromote(pi, ctx, restTokens[0]);
@@ -1056,7 +1257,13 @@ export default function observationJournal(pi: ExtensionAPILike): void {
       sessionId: state.sessionId,
       branchLen: ctx.sessionManager?.getBranch?.().length ?? 0,
     });
-    refreshObservability(ctx, state);
+    const config = loadConfig(ctx);
+    // 只有在 branch 上没有任何 gate entry 时才应用 config default。
+    // 一旦用户在会话里 /journey on 或 /journey off 过，其决定持久化并覆盖 config。
+    if (config.defaultEnabled && !state.enabled && !hasGateEntry(ctx)) {
+      persistGate(pi, ctx, true);
+      trace(pi, ctx, "gate.default-enabled", {});
+    }
   });
 
   pi.on("session_branch", (_event, ctx) => {
@@ -1079,9 +1286,8 @@ export default function observationJournal(pi: ExtensionAPILike): void {
     const sid = sessionIdOf(ctx);
     const runtime = runtimeStore.get(sid);
     if (runtime) {
-      runtime.status.detach();
       runtime.toast.cancel();
-      runtime.attached = false;
+      runtime.observerAbort?.abort();
     }
     stateStore.delete(sid);
     runtimeStore.delete(sid);
@@ -1092,6 +1298,22 @@ export default function observationJournal(pi: ExtensionAPILike): void {
     ensureState(ctx);
     trace(pi, ctx, "turn_end", {});
     refreshObservability(ctx, currentState(ctx));
+
+    // 自动 observer：以「距上次观察至少累积 observeEveryTokens」为触发条件。
+    // usage.tokens 是当前 context 大小（含所有历史），不是 raw delta；
+    // 与 pi-om 的 raw-token chunker 不同，但对 extension 只是启发式够用。
+    const config = loadConfig(ctx);
+    if (!config.autoObserveEnabled) return;
+    const runtime = runtimeFor(ctx);
+    if (runtime.observerInFlight) return;
+    const tokensNow = pickCurrentTokens(ctx);
+    if (tokensNow < config.observeEveryTokens) return;
+    if (tokensNow - runtime.lastObserverTokens < config.observeEveryTokens) return;
+    void triggerAutoObserver(pi, ctx, "threshold").catch((err) => {
+      trace(pi, ctx, "observer.uncaught", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
   });
 
   pi.on("session.compacting", (_event, ctx) => handleCompacting(pi, ctx));
@@ -1118,7 +1340,8 @@ export default function observationJournal(pi: ExtensionAPILike): void {
     { label: "mark-durable", value: "mark-durable ", description: "把一条观察标记为待提升候选" },
     { label: "flush", value: "flush", description: "把最近观察合并成 segment 并落盘 JOURNEY.md" },
     { label: "export", value: "export ", description: "把 JOURNEY.md 导出到指定路径" },
-    { label: "observe", value: "observe", description: "让主 Agent 在下一轮提出观察候选" },
+    { label: "observe", value: "observe", description: "让主 Agent 在下一轮提出观察候选（主对话）" },
+    { label: "observe-now", value: "observe-now", description: "立即 spawn observer subagent 后台抽取观察" },
     { label: "candidates", value: "candidates", description: "列出待写入 Mnemopi 的候选" },
     { label: "promote", value: "promote", description: "把 durable 观察写入 Mnemopi（需要 confirm）" },
     { label: "forget", value: "forget ", description: "从候选池丢弃某条观察" },

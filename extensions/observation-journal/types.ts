@@ -71,7 +71,18 @@ export interface JournalState {
 }
 
 export interface JournalConfig {
+  /** true 时新会话自动启用（如果 branch 上没有 gate entry） */
+  defaultEnabled: boolean;
   observeEveryTokens: number;
+  /** true 时 turn_end 累加达阈值自动 spawn observer subagent 抽取观察 */
+  autoObserveEnabled: boolean;
+  /**
+   * 观察员模型。可为：
+   *   - 角色别名（如 "@smol"、"@tiny"、"@advisor" 或自定义 role）
+   *   - `provider/id` 完整模型串（如 "openrouter/z-ai/glm-5.3"）
+   *   - 未设：fallback 到当前主会话正在用的模型
+   */
+  observerModel?: string;
   journeyMaxSegments: number;
   recentObservationsMax: number;
   journeyTargetBytes: number;
@@ -83,7 +94,10 @@ export interface JournalConfig {
 }
 
 export const DEFAULT_CONFIG: JournalConfig = {
+  defaultEnabled: false,
   observeEveryTokens: 6000,
+  autoObserveEnabled: false,
+  observerModel: undefined,
   journeyMaxSegments: 20,
   recentObservationsMax: 30,
   journeyTargetBytes: 8192,

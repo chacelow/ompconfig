@@ -116,32 +116,7 @@ describe("Discoverability", () => {
     }
   });
 
-  test("gate=off widget invites the user to enable", async () => {
-    const host = createHost();
-    observationJournalFactory(host.api);
-    const { ctx, widgets } = createFakeContext(host);
-    await fire(host, "session_start", ctx);
-    const last = widgets.at(-1) ?? [];
-    expect(last.join(" ")).toContain("未启用");
-    expect(last.join(" ")).toContain("/journey on");
-  });
 
-  test("gate=on widget renders multi-line bar chart with category counts", async () => {
-    const host = createHost();
-    observationJournalFactory(host.api);
-    const { ctx, widgets } = createFakeContext(host);
-    await fire(host, "session_start", ctx);
-    await runCommand(host, "on", ctx);
-    await runCommand(host, "add decision alpha decision", ctx);
-    await runCommand(host, "add preference alpha preference", ctx);
-    await runCommand(host, "add open-question alpha question", ctx);
-    const last = widgets.at(-1) ?? [];
-    expect(last[0]).toContain("观察 3");
-    const joined = last.join("\n");
-    expect(joined).toMatch(/D █+·*\s+1/);
-    expect(joined).toMatch(/P █+·*\s+1/);
-    expect(joined).toMatch(/\? █+·*\s+1/);
-  });
 
   test("/journey help prints every subcommand and category", async () => {
     const host = createHost();
