@@ -1107,7 +1107,26 @@ export default function observationJournal(pi: ExtensionAPILike): void {
   });
 
   pi.registerCommand("journey", {
-    description: "Observation Journal · status snapshot (see /journey:help).",
+    description: "Branch-aware Observation Journal.",
+    input: { hint: "[on|off|toggle|status|show|add|mark-durable|flush|export|observe|candidates|promote|forget|trace|dump|help]" },
+    subcommands: [
+      { name: "on", description: "Enable Observation Journal for this session" },
+      { name: "off", description: "Disable Observation Journal for this session" },
+      { name: "toggle", description: "Flip the enabled state" },
+      { name: "status", description: "Print counts, breakdown, cursor, context and cost" },
+      { name: "show", description: "Open the rendered JOURNEY in a read-only editor" },
+      { name: "add", description: "Record an observation", usage: "<category> <content>" },
+      { name: "mark-durable", description: "Mark an observation as a promotion candidate", usage: "<observationId>" },
+      { name: "flush", description: "Fold recent observations into a segment + write JOURNEY.md" },
+      { name: "export", description: "Export JOURNEY.md to a user-supplied path", usage: "<path>" },
+      { name: "observe", description: "Ask the main agent to propose observations next turn" },
+      { name: "candidates", description: "List observations pending Mnemopi promotion" },
+      { name: "promote", description: "Promote a durable observation to Mnemopi (confirm required)", usage: "[<observationId>]" },
+      { name: "forget", description: "Drop an observation from the candidate pool", usage: "<observationId>" },
+      { name: "trace", description: "Show the recent event trace" },
+      { name: "dump", description: "Show the full internal journal state (JSON)" },
+      { name: "help", description: "Print the full subcommand reference" },
+    ],
     handler: (args, ctx) => handleCommand(pi, ctx, args),
   });
   const subcommands: Array<{
