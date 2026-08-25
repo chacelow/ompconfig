@@ -1,0 +1,12 @@
+marketplaces:
+  - name: unslop-marketplace
+    source: MohamedAbdallah-14/unslop
+
+plugins:
+  - id: unslop@unslop-marketplace
+    scope: user
+    verifiedVersion: 0.7.0
+
+notes:
+  - Only unslop-commit, unslop-review, and unslop-file are enabled by omp/agent/config.yml.
+  - zhihu, crawl4ai, make-interfaces-feel-better, and vercel-react-best-practices are discovered from external user skill sources and are not vendored here.

@@ -1,0 +1,130 @@
+modelRoles: 
+  smol: cursor-claude/cx/gpt-5.6-terra:medium
+  slow: cursor-claude/cx/gpt-5.6-sol:high
+  task: cursor-claude/cx/gpt-5.6-terra:medium
+  plan: cursor-claude/cc/claude-opus-4-7:xhigh
+  commit: anyrouter/claude-haiku-4-5-20251001
+  vision: cursor-claude/cx/gpt-5.6-sol
+  designer: cursor-claude/cc/claude-opus-4-8:medium
+  advisor: cursor-claude/cx/gpt-5.6-sol:medium
+  tiny: cursor-claude/cx/gpt-5.6-terra:off
+  default: cursor-claude/cx/gpt-5.6-sol:high
+display: 
+  showTokenUsage: true
+  hideToolActivity: false
+hideThinkingBlock: false
+stt: 
+  modelName: fast
+  enabled: false
+memory: 
+  backend: mnemopi
+images: 
+  blockImages: false
+compaction: 
+  methodOrder: 
+    - remote
+    - soft
+autoResume: false
+setupVersion: 2
+github: 
+  enabled: true
+task: 
+  enableLsp: true
+defaultThinkingLevel: auto
+theme: 
+  dark: dark-lunar
+  light: dark-lunar
+symbolPreset: nerd
+colorBlindMode: false
+statusLine: 
+  preset: default
+  transparent: false
+  compactThinkingLevel: true
+disabledExtensions: 
+  []
+disabledProviders: 
+  - codex
+  - omp-managed
+  - cursor
+providers: 
+  fetch: native
+  webSearchOrder: 
+    - exa
+    - perplexity
+    - gemini
+    - anthropic
+    - codex
+    - xai
+    - zai
+    - tinyfish
+    - jina
+    - kagi
+    - tavily
+    - firecrawl
+    - brave
+    - kimi
+    - parallel
+    - synthetic
+    - searxng
+    - startpage
+    - duckduckgo
+    - ecosia
+    - google
+    - mojeek
+    - public
+  memoryModel: qwen3-1.7b
+loop: 
+  mode: prompt
+features: 
+  unexpectedStopDetection: true
+autolearn: 
+  enabled: true
+advisor: 
+  enabled: false
+browser: 
+  headless: true
+checkpoint: 
+  enabled: true
+inspect_image: 
+  mode: "off"
+terminal: 
+  showProgress: true
+  showImages: true
+tui: 
+  tight: true
+  renderMermaid: true
+read: 
+  defaultLimit: 300
+lsp: 
+  formatOnWrite: false
+extensions: 
+  - ~/code/omp-image-tasks
+dev: 
+  autoqaConsent: granted
+mnemopi: 
+  embeddingVariant: multilingual
+  llmMode: smol
+  llmModel: ""
+astGrep: 
+  enabled: true
+interruptMode: wait
+followUpMode: all
+steeringMode: all
+omitThinking: true
+error: 
+  notify: "on"
+textVerbosity: high
+composer: 
+  shape: claude
+skills:
+  includeSkills:
+    - finding-unknowns
+    - make-interfaces-feel-better
+    - vercel-react-best-practices
+    - unslop-commit
+    - unslop-review
+    - unslop-file
+    - zhihu
+    - crawl4ai
+todo: 
+  eager: preferred

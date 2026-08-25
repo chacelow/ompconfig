@@ -1,0 +1,32 @@
+# Local overrides and secrets
+.env
+.env.*
+!.env.example
+*.local
+*.secret
+secrets.yml
+**/secrets.yml
+auth.json
+**/auth.json
+secret-placeholder.key
+
+# OMP runtime state
+*.db
+*.db-shm
+*.db-wal
+sessions/
+blobs/
+cache/
+memories/
+terminal-sessions/
+state/
+history/
+
+# Downloaded dependencies and plugin caches
+node_modules/
+plugins/cache/
+
+# OS and editor noise
+.DS_Store
+.idea/
+.vscode/
