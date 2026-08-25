@@ -26,6 +26,8 @@ history/
 node_modules/
 plugins/cache/
 
+__pycache__/
+*.py[cod]
 # OS and editor noise
 .DS_Store
 .idea/
