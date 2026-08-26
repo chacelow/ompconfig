@@ -1,0 +1,20 @@
+{
+  "name": "chacelow-ompconfig",
+  "version": "1.0.0",
+  "description": "Cai's personal OMP plugin: skills + observation-memory extension.",
+  "license": "MIT",
+  "author": {
+    "name": "Cai",
+    "url": "https://github.com/chacelow"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chacelow/ompconfig.git"
+  },
+  "homepage": "https://github.com/chacelow/ompconfig",
+  "omp": {
+    "extensions": [
+      "./extensions/observation-memory/src/index.ts"
+    ]
+  }
+}

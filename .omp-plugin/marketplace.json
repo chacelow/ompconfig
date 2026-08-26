@@ -1,0 +1,24 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "chacelow-ompconfig",
+  "owner": {
+    "name": "Cai",
+    "url": "https://github.com/chacelow"
+  },
+  "metadata": {
+    "description": "Cai's personal OMP config: Matt Pocock Chinese skills bundle + pi-observational-memory in-process port.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "ompconfig",
+      "description": "Skills (Matt Pocock Chinese bundle + youtube-transcript + finding-unknowns) and the observation-memory extension (pi-om in-process port with OMP native subagent).",
+      "source": "./",
+      "category": "productivity",
+      "keywords": ["skills", "memory", "pi-om", "matt-pocock", "chinese"],
+      "homepage": "https://github.com/chacelow/ompconfig",
+      "repository": "https://github.com/chacelow/ompconfig",
+      "license": "MIT"
+    }
+  ]
+}
