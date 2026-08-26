@@ -1,18 +1,26 @@
 # chacelow/ompconfig
 
-一个 OMP plugin marketplace。里面唯一一个 plugin `ompconfig` 打包：
+一个 OMP plugin marketplace，聚合两个 plugin：
 
-- **Skills**：Matt Pocock 中文全家桶（35 个）+ `youtube-transcript` + `finding-unknowns`
-- **Extension**：`observation-memory` —— pi-observational-memory 的 in-process 移植（用 OMP native subagent 替代独立子进程 IPC，`/om` 二级下拉，中文 UI）
+**`ompconfig`**（本仓库自带）
+- Skills：Matt Pocock 中文全家桶（35 个）+ `youtube-transcript` + `finding-unknowns`
+- Extension：`observation-memory` —— pi-observational-memory 的 in-process 移植
+
+**`pi-vcc`**（引用 [sting8k/pi-vcc](https://github.com/sting8k/pi-vcc)）
+- 算法压缩、无 LLM、30-470ms、零成本
+- Invisible auto-continue（压完 agent 无缝续跑）
+- `vcc_recall` lossless 读原始 JSONL 跨 compact 搜
+- 267 stars 上游经过大量真实用户验证
 
 ## 装
 
 ```bash
 omp plugin marketplace add chacelow/ompconfig
 omp plugin install ompconfig@chacelow-ompconfig
+omp plugin install pi-vcc@chacelow-ompconfig
 ```
 
-一次装好 skills + extension。
+一次搞定 skills + 你自己的 observation-memory + pi-vcc compact。
 
 ## 更新
 

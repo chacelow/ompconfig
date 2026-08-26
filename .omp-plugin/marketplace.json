@@ -19,6 +19,23 @@
       "homepage": "https://github.com/chacelow/ompconfig",
       "repository": "https://github.com/chacelow/ompconfig",
       "license": "MIT"
+    },
+    {
+      "name": "pi-vcc",
+      "description": "Algorithmic conversation compactor by @sting8k. No LLM calls — deterministic structured summaries in 30-470ms. Invisible auto-continue after compact. Lossless vcc_recall reads raw JSONL so compaction doesn't lose history.",
+      "source": {
+        "source": "github",
+        "repo": "sting8k/pi-vcc"
+      },
+      "category": "productivity",
+      "keywords": ["compact", "compaction", "vcc", "recall"],
+      "homepage": "https://github.com/sting8k/pi-vcc",
+      "repository": "https://github.com/sting8k/pi-vcc",
+      "license": "MIT",
+      "author": {
+        "name": "sting8k",
+        "url": "https://github.com/sting8k"
+      }
     }
   ]
 }
