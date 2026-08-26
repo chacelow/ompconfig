@@ -7,40 +7,42 @@ import { evaluateConsolidatorTrigger } from "../hooks/consolidator-trigger.js";
  * Force a consolidation now, ignoring the pool threshold. Promotes the oldest observations
  * above `poolTargetTokens`; no-op when there is nothing above target or one is already running.
  */
+export async function handleConsolidate(pi: ExtensionAPI, runtime: Runtime, ctx: any): Promise<void> {
+	if (!runtime.enabled) {
+		if (ctx.hasUI) ctx.ui.notify("观察记忆当前关闭（运行 /om on 启用）", "info");
+		return;
+	}
+	if (runtime.consolidatorInFlight) {
+		if (ctx.hasUI) ctx.ui.notify("已有整合正在进行中", "warning");
+		return;
+	}
+	runtime.ensureConfig(ctx.cwd);
+	const branch = ctx.sessionManager.getBranch() as Entry[];
+	const active = foldLedger(branch).activeObservations;
+	const { promote } = selectPromotionOverflow(active, runtime.config.poolTargetTokens);
+	if (promote.length === 0) {
+		if (ctx.hasUI) {
+			ctx.ui.notify(
+				`暂无可整合内容（缓冲池 ${poolTokens(active).toLocaleString()} tok ≤ 目标 ${runtime.config.poolTargetTokens.toLocaleString()} tok）`,
+				"info",
+			);
+		}
+		return;
+	}
+	// Temporarily lower the threshold to 0 for this evaluation so the trigger fires
+	// regardless of the configured pool threshold.
+	const saved = runtime.config.consolidateAtPoolTokens;
+	runtime.config.consolidateAtPoolTokens = 0;
+	try {
+		evaluateConsolidatorTrigger(pi, runtime, ctx);
+	} finally {
+		runtime.config.consolidateAtPoolTokens = saved;
+	}
+}
+
 export function registerConsolidateCommand(pi: ExtensionAPI, runtime: Runtime): void {
 	pi.registerCommand("om:consolidate", {
-		description: "Force an observational-memory consolidation now (ignores the pool threshold)",
-		handler: async (_args: string, ctx: any) => {
-			if (!runtime.enabled) {
-				if (ctx.hasUI) ctx.ui.notify("om is off (use /om on to enable)", "info");
-				return;
-			}
-			if (runtime.consolidatorInFlight) {
-				if (ctx.hasUI) ctx.ui.notify("om: consolidation already in progress", "warning");
-				return;
-			}
-			runtime.ensureConfig(ctx.cwd);
-			const branch = ctx.sessionManager.getBranch() as Entry[];
-			const active = foldLedger(branch).activeObservations;
-			const { promote } = selectPromotionOverflow(active, runtime.config.poolTargetTokens);
-			if (promote.length === 0) {
-				if (ctx.hasUI) {
-					ctx.ui.notify(
-						`om: nothing to consolidate (pool ${poolTokens(active).toLocaleString()} tok <= target ${runtime.config.poolTargetTokens.toLocaleString()} tok)`,
-						"info",
-					);
-				}
-				return;
-			}
-			// Temporarily lower the threshold to 0 for this evaluation so the trigger fires
-			// regardless of the configured pool threshold.
-			const saved = runtime.config.consolidateAtPoolTokens;
-			runtime.config.consolidateAtPoolTokens = 0;
-			try {
-				evaluateConsolidatorTrigger(pi, runtime, ctx);
-			} finally {
-				runtime.config.consolidateAtPoolTokens = saved;
-			}
-		},
+		description: "立即触发观察记忆整合（忽略缓冲池阈值）",
+		handler: async (_args: string, ctx: any) => await handleConsolidate(pi, runtime, ctx),
 	});
 }
