@@ -54,13 +54,21 @@ interface ModelSelection {
 
 /**
  * Resolve the (modelRole, modelOverride) pair for runSubprocess given a
- * pi-om config and the master session's active model.
+ * pi-om config value and the master session's active model.
  *
- * Precedence: explicit config → session fallback → @smol backstop.
+ * Precedence:
+ *   1. explicit config value ('@role' → modelRole; else → modelOverride)
+ *   2. session fallback (ctx.getModel() → provider/id)
+ *   3. defaultRole backstop (per worker: '@observations' / '@consolidator')
+ *
+ * The default role is expected to be defined in the user's modelRoles map.
+ * OMP's role resolver will further fall back to whatever '@default' points
+ * at if the target role is unmapped.
  */
 export function resolveWorkerModel(
   configured: string | undefined,
   activeModel: ActiveModelInfo | undefined,
+  defaultRole: string = "@observations",
 ): ModelSelection {
   const trimmed = configured?.trim();
   if (trimmed && trimmed.length > 0) {
@@ -70,7 +78,7 @@ export function resolveWorkerModel(
   const provider = activeModel?.provider?.trim();
   const id = activeModel?.id?.trim();
   if (provider && id) return { modelOverride: `${provider}/${id}` };
-  return { modelRole: "@smol" };
+  return { modelRole: defaultRole };
 }
 
 // ---------- Output schema (JTD) ----------
@@ -235,7 +243,11 @@ export async function dispatchObserverInProcess(
       error: "SDK 未暴露 runSubprocess（OMP 版本过旧）",
     };
   }
-  const selection = resolveWorkerModel(opts.observerModel, pickActiveModel(opts.ctx));
+  const selection = resolveWorkerModel(
+    opts.observerModel,
+    pickActiveModel(opts.ctx),
+    "@observations",
+  );
   const modelHint = selection.modelOverride ?? selection.modelRole;
   try {
     const result = await runSubprocess({
@@ -321,7 +333,11 @@ export async function dispatchConsolidatorInProcess(
       error: "SDK 未暴露 runSubprocess（OMP 版本过旧）",
     };
   }
-  const selection = resolveWorkerModel(opts.consolidatorModel, pickActiveModel(opts.ctx));
+  const selection = resolveWorkerModel(
+    opts.consolidatorModel,
+    pickActiveModel(opts.ctx),
+    "@consolidator",
+  );
   const modelHint = selection.modelOverride ?? selection.modelRole;
   setConsolidatorRoot(opts.memoryRoot);
   try {
