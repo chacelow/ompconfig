@@ -1,77 +1,72 @@
 # ompconfig
 
-Private source repository for personal OMP and Claude agent configuration.
+个人 OMP + Claude Agent 配置的私有源仓库。
 
-## Tracked
+## Scope（明确不管什么）
 
-- `omp/agent/config.yml`: portable OMP settings and skill allowlist
-- `claude/CLAUDE.md`: global agent instructions
-- `skills/`: personally maintained skills
-- `plugins/manifest.yml`: third-party marketplace/plugin declarations
-- `scripts/`: install, sync, and verification commands
-- Matt Pocock Chinese bundle: all 35 upstream skills are vendored; `ask-matt`, `grilling`, and `prototype` contain personal overrides
-- `youtube-transcript`: vendored from `amosblomqvist/pi-config`, adapted for multilingual captions; requires `yt-dlp`
-- `extensions/observation-memory/`: pi-observational-memory 的 in-process 移植（用 OMP native subagent 替换独立子进程 IPC，`/om` 二级下拉，中文 UI）
+**只追踪可分享的资产**：
 
-Runtime databases, sessions, memories, caches, credentials, and machine-local MCP paths are intentionally excluded.
+- `claude/CLAUDE.md`：agent 指令（缺失才装、不覆盖用户改动）
+- `skills/`：手写 + vendored 的 Skill
+- `extensions/`：OMP extension（当前只有 `observation-memory`）
+- `plugins/manifest.yml`：第三方 marketplace / plugin 声明
+- `scripts/`：install / sync / verify
 
-## Install on a machine
+**明确不追踪**（每台机器自己维护、避免任何跨机器覆盖）：
+
+- `~/.omp/agent/config.yml`
+- `~/.omp/agent/settings.json`
+- `~/.omp/agent/models.yml`
+- `~/.omp/agent/auth.json`
+- `~/.omp/agent/agent.db` 及所有 SQLite / blobs / sessions / memory
+
+之前版本里我把 `omp/agent/config.yml` 也 track 了、install 会硬覆盖 —— 现在收窄，`config.yml` 类文件永远由每台机器自己私有维护。
+
+## 装到新机器
 
 ```bash
 ./scripts/install.sh
 ```
 
-Existing configuration files are copied to timestamped backups before replacement. Installation restores every vendored Skill directly, so the Matt Pocock bundle does not depend on upstream network access. Third-party plugin installation remains best-effort because it requires network access.
+- CLAUDE.md：缺失才创建、已存在会 skip 并提示
+- Skills：直接覆盖 `~/.agents/skills/<name>`
+- Extensions：直接覆盖 `~/.omp/agent/extensions/<name>`
 
-## Capture local changes
+## 把本机改动 push 回仓库
 
 ```bash
 ./scripts/sync-from-home.sh
-./scripts/verify.sh
-git diff
 ```
 
-Commit only after reviewing the diff.
+只同步 CLAUDE.md + skills + extensions，配置文件不动。
 
-## Update another machine
+## Verify
 
 ```bash
-git pull --ff-only
-./scripts/install.sh
+./scripts/verify.sh
 ```
+
+只做两件事：whitespace check + secret grep。
 
 ## 在另一台电脑上让 agent 帮你同步
 
-把下面这段贴给另一台电脑的 OMP/Claude agent，它会跑完整个流程：
+贴给另一台电脑上的 OMP/Claude agent：
 
 ````
 帮我在这台电脑上同步 ompconfig 私有仓库的配置：
 
-1. 确保 bun + git + ssh key 已配好（`gh auth status` 能看到 chacelow 或
-   你已经 `git@github.com:chacelow/ompconfig.git` 能 SSH pull）。
+1. `gh auth status` 或 SSH key 就绪
 2. `git clone git@github.com:chacelow/ompconfig.git ~/code/ompconfig`
-   （如果已存在 → cd 进去 `git pull --ff-only`）
-3. 如果 omp CLI 还没装：`bun i -g @oh-my-pi/pi-coding-agent`
+   （已存在 → `git pull --ff-only`）
+3. omp 没装：`bun i -g @oh-my-pi/pi-coding-agent`
 4. `cd ~/code/ompconfig && ./scripts/install.sh`
-   - 会拷 config.yml、CLAUDE.md、skills/、extensions/ 到 `~/.omp/agent/`
-   - 已有配置会自动备份成 `.backup.<timestamp>`
-5. 装 provider credentials（install.sh 不同步这个，避免 leak）：
-   `omp auth` 或按你原本的登录流程走。至少配置 config.yml 里
-   `defaultProvider` 指到的 provider。
-6. 验证：`./scripts/verify.sh`
-7. 起 `omp`，随便对话一句确认 provider 通了。
-8. 想开观察记忆：`/om default on` 一次性设置，以后新会话自动启用。
-
-**不会**从仓库同步的（各自机器独立）：
-  * API keys / OAuth credentials（`auth.json`、`agent.db` 里的 provider tokens）
-  * session 历史（`~/.omp/agent/sessions/`、`agent.db`）
-  * Mnemopi 数据库（`~/.omp/agent/memory-*`）
-  * blobs / cache
-  * project-local `.omp/` 目录（那是每个项目自己的）
+5. Provider credentials 本地自己配（`omp` 里走登录流程），仓库不管
+6. `./scripts/verify.sh` 走一遍
+7. 起 `omp`，发一句话验证 provider 通
+8. 想开观察记忆：`/om default on`
 ````
 
-粘完后 agent 一般会问你确认关键步骤（比如 install.sh 会覆盖），照它提示走就行。
+## 项目内还是全局？
 
-## Scope rule
-
-Keep cross-project preferences here. Put project-specific instructions, MCP servers, and skills in that project's `.omp/` directory.
+- 跨项目、跨机器共享的偏好 → 这仓库
+- 项目专属指令 / MCP server / Skill → 那个项目自己的 `.omp/`

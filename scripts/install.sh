@@ -5,21 +5,6 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 omp_agent_dir="${PI_CODING_AGENT_DIR:-$HOME/.omp/agent}"
 claude_dir="$HOME/.claude"
 
-backup_file() {
-  local target="$1"
-  if [[ -e "$target" && ! -L "$target" ]]; then
-    cp -p "$target" "$target.backup.$(date +%Y%m%d%H%M%S)"
-  fi
-}
-
-install_file() {
-  local source="$1"
-  local target="$2"
-  mkdir -p "$(dirname "$target")"
-  backup_file "$target"
-  cp -p "$source" "$target"
-}
-
 # 只在目标缺失时创建；已存在则不动，让用户显式 sync。
 install_file_if_missing() {
   local source="$1"
@@ -29,7 +14,6 @@ install_file_if_missing() {
     if ! cmp -s "$source" "$target"; then
       echo "[skip] $target 已存在且内容不同；仓库版本未强制覆盖。" >&2
       echo "  想 pull 仓库改动：cp -p '$source' '$target'（先备份）" >&2
-      echo "  想把本机改动 push 回仓库：./scripts/sync-from-home.sh" >&2
     fi
     return 0
   fi
@@ -49,13 +33,15 @@ install_tree() {
   cp -R "$source" "$target"
 }
 
-
-install_file_if_missing "$repo_root/omp/agent/config.yml" "$omp_agent_dir/config.yml"
+# CLAUDE.md：只在缺失时创建，不覆盖用户改动。
 install_file_if_missing "$repo_root/claude/CLAUDE.md" "$claude_dir/CLAUDE.md"
+
+# Skills：直接覆盖到 ~/.agents/skills/（每个 skill 是独立目录，覆盖是预期行为）。
 for skill_dir in "$repo_root"/skills/*; do
   install_tree "$skill_dir" "$HOME/.agents/skills/$(basename "$skill_dir")"
 done
 
+# Extensions：直接覆盖到 ~/.omp/agent/extensions/。
 extensions_root="$repo_root/extensions"
 if [[ -d "$extensions_root" ]]; then
   for src in "$extensions_root"/*; do
@@ -65,11 +51,12 @@ if [[ -d "$extensions_root" ]]; then
     mkdir -p "$(dirname "$dest")"
     rm -rf "$dest"
     cp -R "$src" "$dest"
-    # SPEC/tests/tsconfig are repo-only, do not install into runtime.
+    # tsconfig / SPEC / tests 只在仓库里存在，不进 runtime。
     rm -rf "$dest/SPEC.md" "$dest/tests" "$dest/tsconfig.json"
   done
 fi
 
+# 外部依赖（best-effort，需要网络）
 if command -v uv >/dev/null 2>&1; then
   uv tool install yt-dlp || echo "Warning: yt-dlp installation failed" >&2
 elif ! command -v yt-dlp >/dev/null 2>&1; then
@@ -81,4 +68,6 @@ if command -v omp >/dev/null 2>&1; then
   omp plugin install --scope user unslop@unslop-marketplace || true
 fi
 
-echo "Installed OMP configuration from $repo_root"
+echo ""
+echo "已装：Skills + Extensions + CLAUDE.md（缺失才装）"
+echo "本仓库不管 config.yml / settings.json / models.yml — 那是每台机器自己的私有配置。"
