@@ -33,27 +33,44 @@ function readGateFromLedger(branch: Entry[]): boolean {
 }
 
 /**
- * Check that the pi-om worker roles are configured in OMP's modelRoles map.
- * Nudges the user toward `/model` → `+ New role…` when either is missing.
+ * Runtime-inject pi-om's worker roles into OMP's global settings singleton.
  *
- * Missing role is not fatal — dispatcher's session-active-model fallback
- * still lets pi-om run — but it means the user is silently paying
- * main-model rates for background observers.
+ * Uses `settings.overrideModelRoles` — a memory-only override that does NOT
+ * write to config.yml. Effect:
+ *   * `/model` UI lists OBSERVATIONS and CONSOLIDATOR alongside the built-ins.
+ *   * `expandRoleAlias('@observations', settings)` now resolves.
+ *   * The user can re-map either role in the model browser; that write hits
+ *     the persist layer only when the user explicitly changes it.
+ *
+ * Defaults chain to the user's already-assigned built-in roles:
+ *   observations → @smol   (fast + cheap)
+ *   consolidator → @advisor (mid-tier reasoning)
+ *
+ * Skipped when the user already assigned observations / consolidator
+ * explicitly (via config.yml or a prior /model reassignment persisted to
+ * disk) so we never clobber user intent.
  */
-function warnMissingRoles(pi: ExtensionAPI, ctx: any): void {
-	if (!ctx.hasUI || !ctx.ui?.notify) return;
-	const settings = (pi as unknown as {
-		pi?: { settings?: { getModelRoles?: () => Record<string, string> } };
+function seedDefaultRoles(pi: ExtensionAPI): void {
+	const globalSettings = (pi as unknown as {
+		pi?: {
+			settings?: {
+				getModelRoles?: () => Record<string, string>;
+				overrideModelRoles?: (roles: Record<string, string>) => void;
+			};
+		};
 	}).pi?.settings;
-	const roles = settings?.getModelRoles?.() ?? {};
-	const missing: string[] = [];
-	if (!roles.observations) missing.push("observations");
-	if (!roles.consolidator) missing.push("consolidator");
-	if (missing.length === 0) return;
-	ctx.ui.notify(
-		`om: ${missing.join(" + ")} role 未配置。走 /model → + New role… 建两个 role（observations 便宜快、consolidator 中级思考），否则 pi-om 会用主 session 模型跑观察员，成本较高。`,
-		"warning",
-	);
+	if (!globalSettings?.overrideModelRoles || !globalSettings.getModelRoles) return;
+	const current = globalSettings.getModelRoles();
+	const patch: Record<string, string> = {};
+	if (!current.observations) patch.observations = "@smol";
+	if (!current.consolidator) patch.consolidator = "@advisor";
+	if (Object.keys(patch).length === 0) return;
+	try {
+		globalSettings.overrideModelRoles(patch);
+	} catch {
+		// Best-effort: if the SDK surface changed, fall back silently to the
+		// dispatcher's activeModel path.
+	}
 }
 
 export default function observationalMemory(pi: ExtensionAPI): void {
@@ -61,6 +78,10 @@ export default function observationalMemory(pi: ExtensionAPI): void {
 	// om_write / om_edit / om_ls / om_grep). Root is set per-dispatch by the
 	// dispatcher; registered here once at extension init.
 	registerConsolidatorTools(pi);
+	// Runtime-inject OBSERVATIONS + CONSOLIDATOR into OMP's model role map so
+	// the /model UI lists them and role aliases resolve. Memory-only, no
+	// config.yml write. See seedDefaultRoles doc.
+	seedDefaultRoles(pi);
 	const runtime = new Runtime();
 
 	function attachIfEnabled(ctx: any): void {
@@ -103,7 +124,7 @@ export default function observationalMemory(pi: ExtensionAPI): void {
 				attachIfEnabled(ctx);
 				runtime.refreshFooterGauges(ctx.sessionManager.getBranch() as Entry[], ctx.getContextUsage?.()?.tokens ?? null);
 				runtime.refreshCost(ctx.sessionManager.getEntries() as Entry[]);
-				warnMissingRoles(pi, ctx);
+				// (default roles are seeded once at extension init, no per-toggle nudge)
 			} else {
 				runtime.abortAllWorkers();
 				runtime.status.detach();
