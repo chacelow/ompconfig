@@ -27,9 +27,3 @@ export async function handleCompact(_pi: ExtensionAPI, runtime: Runtime, ctx: an
 	});
 }
 
-export function registerCompactCommand(pi: ExtensionAPI, runtime: Runtime): void {
-	pi.registerCommand("om:compact", {
-		description: "立即触发观察记忆压缩（忽略阈值）",
-		handler: async (_args: string, ctx: any) => await handleCompact(pi, runtime, ctx),
-	});
-}

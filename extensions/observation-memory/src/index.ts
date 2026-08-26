@@ -10,9 +10,6 @@
  * extension is completely invisible.
  */
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
-import { registerCompactCommand } from "./commands/compact.js";
-import { registerConsolidateCommand } from "./commands/consolidate.js";
-import { registerStatusCommand } from "./commands/status.js";
 import { registerCompactionHook } from "./hooks/compaction-hook.js";
 import { registerCompactionTrigger } from "./hooks/compaction-trigger.js";
 import { registerConsolidatorTrigger } from "./hooks/consolidator-trigger.js";
@@ -193,7 +190,4 @@ export default function observationalMemory(pi: ExtensionAPI): void {
 	registerCompactionTrigger(pi, runtime);
 	registerCompactionHook(pi, runtime);
 
-	registerStatusCommand(pi, runtime);
-	registerCompactCommand(pi, runtime);
-	registerConsolidateCommand(pi, runtime);
 }

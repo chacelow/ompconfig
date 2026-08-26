@@ -39,10 +39,3 @@ export async function handleStatus(_pi: ExtensionAPI, runtime: Runtime, ctx: any
 	];
 	ctx.ui.notify(lines.join("\n"), "info");
 }
-
-export function registerStatusCommand(pi: ExtensionAPI, runtime: Runtime): void {
-	pi.registerCommand("om:status", {
-		description: "显示观察记忆状态：在飞 worker、缓冲池、时钟、成本",
-		handler: async (_args: string, ctx: any) => await handleStatus(pi, runtime, ctx),
-	});
-}

@@ -39,10 +39,3 @@ export async function handleConsolidate(pi: ExtensionAPI, runtime: Runtime, ctx:
 		runtime.config.consolidateAtPoolTokens = saved;
 	}
 }
-
-export function registerConsolidateCommand(pi: ExtensionAPI, runtime: Runtime): void {
-	pi.registerCommand("om:consolidate", {
-		description: "立即触发观察记忆整合（忽略缓冲池阈值）",
-		handler: async (_args: string, ctx: any) => await handleConsolidate(pi, runtime, ctx),
-	});
-}
