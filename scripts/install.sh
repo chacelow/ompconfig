@@ -20,6 +20,23 @@ install_file() {
   cp -p "$source" "$target"
 }
 
+# 只在目标缺失时创建；已存在则不动，让用户显式 sync。
+install_file_if_missing() {
+  local source="$1"
+  local target="$2"
+  mkdir -p "$(dirname "$target")"
+  if [[ -e "$target" ]]; then
+    if ! cmp -s "$source" "$target"; then
+      echo "[skip] $target 已存在且内容不同；仓库版本未强制覆盖。" >&2
+      echo "  想 pull 仓库改动：cp -p '$source' '$target'（先备份）" >&2
+      echo "  想把本机改动 push 回仓库：./scripts/sync-from-home.sh" >&2
+    fi
+    return 0
+  fi
+  cp -p "$source" "$target"
+  echo "[install] $target"
+}
+
 install_tree() {
   local source="$1"
   local target="$2"
@@ -33,8 +50,8 @@ install_tree() {
 }
 
 
-install_file "$repo_root/omp/agent/config.yml" "$omp_agent_dir/config.yml"
-install_file "$repo_root/claude/CLAUDE.md" "$claude_dir/CLAUDE.md"
+install_file_if_missing "$repo_root/omp/agent/config.yml" "$omp_agent_dir/config.yml"
+install_file_if_missing "$repo_root/claude/CLAUDE.md" "$claude_dir/CLAUDE.md"
 for skill_dir in "$repo_root"/skills/*; do
   install_tree "$skill_dir" "$HOME/.agents/skills/$(basename "$skill_dir")"
 done

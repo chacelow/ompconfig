@@ -21,17 +21,18 @@ skillSources:
     notes: Vendored and adapted for Universal/OMP paths and multilingual caption selection.
 
 extensions:
-  - name: observation-journal
+  - name: observation-memory
     scope: user
     source: local
-    entry: extensions/observation-journal/index.ts
+    entry: extensions/observation-memory/src/index.ts
     default: off
     commands:
-      - /journey [on|off|toggle|status|show|add|mark-durable|flush|export|observe|candidates|promote|forget|trace|dump]
+      - /om [on|off|toggle|status|compact|consolidate|default|help]
     notes: |
-      Branch-aware Observation Journal that reuses OMP session custom entries
-      and Mnemopi. Default OFF per session. See extensions/observation-journal/SPEC.md.
-      Stage 1–3 delivered; Stage 3 promotion is manual-only.
+      pi-observational-memory 的 in-process 移植：observer / consolidator
+      通过 OMP native subagent 触发（`pi.pi.runSubprocess`），@observations 和
+      @consolidator role 通过 seedDefaultRoles 运行时注入到 /model UI。
+      默认 per-session OFF；`/om default on` 持久化到 settings.json。
 
 notes:
   - All 35 Matt Pocock Chinese skills are vendored under skills/ and enabled by omp/agent/config.yml.
