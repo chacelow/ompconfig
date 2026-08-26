@@ -114,6 +114,13 @@ async function dispatchObserver(
 	const coversUpToId = slice.coversUpToId!;
 	runtime.observersInFlight.set(runId, { controller, coversUpToId });
 
+	// Hard timeout: 90s. OMP v18 偶尔让 subagent SSE stream 卡死不结束；
+	// 单个 observer 泄漏 promise 会拖垮 whenObserversIdle 与整个 compaction。
+	const hardTimeout = setTimeout(() => {
+		controller.abort();
+	}, 90_000);
+	hardTimeout.unref?.();
+
 	const { text: chunkText } = serializeSourceAddressedBranchEntries(slice.entries);
 	const lastEntry = slice.entries.at(-1);
 
@@ -181,6 +188,7 @@ async function dispatchObserver(
 		runtime.status.workerError(runId);
 		if (ctx.hasUI) ctx.ui?.notify(`om: observer failed: ${message}`, "error");
 	} finally {
+		clearTimeout(hardTimeout);
 		runtime.observersInFlight.delete(runId);
 	}
 }

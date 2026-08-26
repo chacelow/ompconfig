@@ -153,10 +153,39 @@ export class Runtime {
 		void task.finally(() => this.observerTasks.delete(task));
 	}
 
-	/** Resolve once no observer tasks are in flight (compaction blocks on this). */
-	async whenObserversIdle(): Promise<void> {
+	/**
+	 * Resolve once no observer tasks are in flight, or after `maxWaitMs`
+	 * elapses (defaults to 10s). On timeout we abort every in-flight observer
+	 * and drop tracked tasks so the caller (compaction hook) can proceed.
+	 *
+	 * Prevents session_before_compact from hanging 30s+ when an observer
+	 * subagent's stream stalls (OMP v18 has known SSE flush issues under some
+	 * providers). Better to lose those observations than to have the whole
+	 * TUI stuck.
+	 */
+	async whenObserversIdle(maxWaitMs = 10_000): Promise<void> {
+		if (this.observerTasks.size === 0) return;
+		const deadline = Date.now() + maxWaitMs;
 		while (this.observerTasks.size > 0) {
-			await Promise.allSettled([...this.observerTasks]);
+			const remainingMs = deadline - Date.now();
+			if (remainingMs <= 0) {
+				// Timeout — abort in-flight observers and give up waiting.
+				for (const { controller } of this.observersInFlight.values()) {
+					controller.abort();
+				}
+				this.observerTasks.clear();
+				this.lastCompactionObserverWait = "waited";
+				return;
+			}
+			const { promise: timeoutPromise, resolve: timeoutResolve } =
+				Promise.withResolvers<void>();
+			const timer = setTimeout(timeoutResolve, remainingMs);
+			await Promise.race([
+				Promise.allSettled([...this.observerTasks]).then(() => {
+					clearTimeout(timer);
+				}),
+				timeoutPromise,
+			]);
 		}
 	}
 
