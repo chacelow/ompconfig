@@ -32,6 +32,30 @@ function readGateFromLedger(branch: Entry[]): boolean {
 	return false;
 }
 
+/**
+ * Check that the pi-om worker roles are configured in OMP's modelRoles map.
+ * Nudges the user toward `/model` → `+ New role…` when either is missing.
+ *
+ * Missing role is not fatal — dispatcher's session-active-model fallback
+ * still lets pi-om run — but it means the user is silently paying
+ * main-model rates for background observers.
+ */
+function warnMissingRoles(pi: ExtensionAPI, ctx: any): void {
+	if (!ctx.hasUI || !ctx.ui?.notify) return;
+	const settings = (pi as unknown as {
+		pi?: { settings?: { getModelRoles?: () => Record<string, string> } };
+	}).pi?.settings;
+	const roles = settings?.getModelRoles?.() ?? {};
+	const missing: string[] = [];
+	if (!roles.observations) missing.push("observations");
+	if (!roles.consolidator) missing.push("consolidator");
+	if (missing.length === 0) return;
+	ctx.ui.notify(
+		`om: ${missing.join(" + ")} role 未配置。走 /model → + New role… 建两个 role（observations 便宜快、consolidator 中级思考），否则 pi-om 会用主 session 模型跑观察员，成本较高。`,
+		"warning",
+	);
+}
+
 export default function observationalMemory(pi: ExtensionAPI): void {
 	// Global sandboxed file tools for the consolidator subagent (om_read /
 	// om_write / om_edit / om_ls / om_grep). Root is set per-dispatch by the
@@ -79,6 +103,7 @@ export default function observationalMemory(pi: ExtensionAPI): void {
 				attachIfEnabled(ctx);
 				runtime.refreshFooterGauges(ctx.sessionManager.getBranch() as Entry[], ctx.getContextUsage?.()?.tokens ?? null);
 				runtime.refreshCost(ctx.sessionManager.getEntries() as Entry[]);
+				warnMissingRoles(pi, ctx);
 			} else {
 				runtime.abortAllWorkers();
 				runtime.status.detach();
