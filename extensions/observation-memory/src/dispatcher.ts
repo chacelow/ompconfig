@@ -59,16 +59,19 @@ interface ModelSelection {
  * Precedence:
  *   1. explicit config value ('@role' → modelRole; else → modelOverride)
  *   2. session fallback (ctx.getModel() → provider/id)
- *   3. defaultRole backstop (per worker: '@observations' / '@consolidator')
+ *   3. defaultRole backstop — points at an OMP built-in role the user
+ *      almost certainly already assigned via `/model`:
+ *        observer     → '@smol'   (fast + cheap)
+ *        consolidator → '@advisor' (mid-tier reasoning for topic folding)
  *
- * The default role is expected to be defined in the user's modelRoles map.
- * OMP's role resolver will further fall back to whatever '@default' points
- * at if the target role is unmapped.
+ * Users who want to differentiate observer/consolidator models further
+ * can either assign those built-in roles via `/model`, or set
+ * observerModel / consolidatorModel in the pi-om config block.
  */
 export function resolveWorkerModel(
   configured: string | undefined,
   activeModel: ActiveModelInfo | undefined,
-  defaultRole: string = "@observations",
+  defaultRole: string = "@smol",
 ): ModelSelection {
   const trimmed = configured?.trim();
   if (trimmed && trimmed.length > 0) {
@@ -246,7 +249,7 @@ export async function dispatchObserverInProcess(
   const selection = resolveWorkerModel(
     opts.observerModel,
     pickActiveModel(opts.ctx),
-    "@observations",
+    "@smol",
   );
   const modelHint = selection.modelOverride ?? selection.modelRole;
   try {
@@ -336,7 +339,7 @@ export async function dispatchConsolidatorInProcess(
   const selection = resolveWorkerModel(
     opts.consolidatorModel,
     pickActiveModel(opts.ctx),
-    "@consolidator",
+    "@advisor",
   );
   const modelHint = selection.modelOverride ?? selection.modelRole;
   setConsolidatorRoot(opts.memoryRoot);
