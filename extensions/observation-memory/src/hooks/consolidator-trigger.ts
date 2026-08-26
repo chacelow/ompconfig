@@ -112,6 +112,13 @@ async function dispatchConsolidator(
 	runtime.status.workerStart("consolidator", runId);
 
 	try {
+		// Backend routing: if the user has Mnemopi wired in, promote directly
+		// into it instead of running the .md consolidator subagent. Same batch
+		// tombstoning either way. Avoids double-indexing the same content across
+		// two long-term stores.
+		if (await tryPromoteViaMemoryBackend(pi, runtime, ctx, promote, runId)) {
+			return;
+		}
 		const prompt = buildConsolidatorPrompt(
 			runtime.memoryRoot,
 			promote,
@@ -167,6 +174,82 @@ async function dispatchConsolidator(
 		runtime.consolidatorController = undefined;
 		runtime.consolidatorInFlight = false;
 	}
+}
+
+/**
+ * Mnemopi backend path: skip the .md consolidator subagent entirely.
+ * Mnemopi already does embedding + invalidate elsewhere, so writing to
+ * both stores would double-index the same content. We promote each pool
+ * observation directly via ctx.memory.save() and tombstone the batch
+ * exactly like the .md path would.
+ *
+ * Detection uses ctx.memory.status() → { backend, active, writable }.
+ * Returns true when we handled it (caller skips the subagent path).
+ */
+async function tryPromoteViaMemoryBackend(
+	pi: ExtensionAPI,
+	runtime: Runtime,
+	ctx: TriggerCtx,
+	promote: Observation[],
+	runId: string,
+): Promise<boolean> {
+	const memory = (ctx as {
+		memory?: {
+			status?: () => Promise<{ backend?: string; active?: boolean; writable?: boolean }>;
+			save?: (input: { content: string; context?: string; source?: string; importance?: number }) =>
+				Promise<{ stored?: number; ids?: string[] } | undefined>;
+		};
+	}).memory;
+	if (!memory?.save || !memory.status) return false;
+	let status: { backend?: string; active?: boolean; writable?: boolean };
+	try {
+		status = await memory.status();
+	} catch {
+		return false;
+	}
+	// Only Mnemopi supersedes the .md consolidator. `local` / `hindsight` / `off`
+	// keep the file-based path so users get topic docs they can read and diff.
+	if (status.backend !== "mnemopi" || !status.active || !status.writable) return false;
+
+	let stored = 0;
+	let costUsd = 0;
+	for (const obs of promote) {
+		try {
+			const result = await memory.save({
+				content: obs.content,
+				context: `pi-om observation @ ${obs.timestamp}`,
+				source: "pi-om",
+				importance: 0.5,
+			});
+			stored += result?.stored ?? 0;
+		} catch {
+			// keep going — one bad save shouldn't blackhole the batch
+		}
+	}
+
+	// Tombstone the whole handed batch (intersected with still-active) — same
+	// semantics as the .md path. Mnemopi owns the durable copy from here.
+	const branch = ctx.sessionManager.getBranch();
+	const stillActive = new Set(foldLedger(branch).activeObservations.map((o) => o.timestamp));
+	const toDrop = promote.map((o) => o.timestamp).filter((t) => stillActive.has(t));
+	if (toDrop.length > 0) {
+		const coversUpToId = lastSourceEntryId(branch);
+		if (coversUpToId) {
+			pi.appendEntry(OM_OBSERVATIONS_DROPPED, { observationTimestamps: toDrop, coversUpToId });
+		}
+	}
+
+	recordWorkerCost(pi, runtime, ctx, "consolidator", runId, costUsd);
+	runtime.status.workerDone(runId, toDrop.length);
+	runtime.refreshFooterGauges(ctx.sessionManager.getBranch(), ctx.getContextUsage?.()?.tokens ?? null);
+	if (ctx.hasUI && ctx.ui) {
+		runtime.queueToast(
+			`om: consolidator → mnemopi (${stored}/${promote.length} saved, ${toDrop.length} tombstoned)`,
+			"info",
+			ctx.ui.notify.bind(ctx.ui),
+		);
+	}
+	return true;
 }
 
 export function registerConsolidatorTrigger(pi: ExtensionAPI, runtime: Runtime): void {
