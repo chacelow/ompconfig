@@ -52,6 +52,13 @@ export interface Config {
 	resumeAfterMidRunCompaction: boolean;
 	/** Power-user setting: disable all triggers (distinct from the on/off gate). */
 	passive: boolean;
+	/**
+	 * When true, new sessions auto-enable the gate on session_start (unless
+	 * the branch already carries an OM_ENABLED entry from an earlier explicit
+	 * /om on|off in that session). Persisted via OMP settings.set at
+	 * ~/.omp/agent/settings.json → observational-memory.defaultEnabled.
+	 */
+	defaultEnabled: boolean;
 	/** Emit the NDJSON debug log. */
 	debugLog: boolean;
 }
@@ -69,6 +76,7 @@ export const DEFAULTS: Config = {
   observerModel: undefined,
   consolidatorModel: undefined,
 	passive: false,
+	defaultEnabled: false,
 	debugLog: false,
 };
 
@@ -124,6 +132,7 @@ function normalizeSettingsConfig(value: Record<string, unknown>, base: Config): 
 	if (typeof value.resumeAfterMidRunCompaction === "boolean")
 		normalized.resumeAfterMidRunCompaction = value.resumeAfterMidRunCompaction;
 	if (typeof value.passive === "boolean") normalized.passive = value.passive;
+	if (typeof value.defaultEnabled === "boolean") normalized.defaultEnabled = value.defaultEnabled;
 	if (typeof value.debugLog === "boolean") normalized.debugLog = value.debugLog;
   const observerModel =
     typeof value.observerModel === "string" && value.observerModel.trim().length > 0

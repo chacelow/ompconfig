@@ -96,7 +96,15 @@ export default function observationalMemory(pi: ExtensionAPI): void {
 		runtime.ensureConfig(ctx.cwd);
 		runtime.dispatchedCoversUpToId = undefined;
 		const branch = ctx.sessionManager.getBranch() as Entry[];
+		const hasGate = branch.some((e) => e.type === "custom" && (e as any).customType === OM_ENABLED);
 		runtime.enabled = readGateFromLedger(branch);
+		// defaultEnabled 持久化偏好：新会话若没显式 gate entry 且用户设了默认开，
+		// 就自动 append 一条 OM_ENABLED(true)。用户在会话里 /om off 后 branch 有 gate entry
+		// → 尊重用户显式关，不覆盖。
+		if (!hasGate && runtime.config.defaultEnabled && !runtime.enabled) {
+			runtime.enabled = true;
+			pi.appendEntry(OM_ENABLED, { enabled: true });
+		}
 		if (runtime.enabled) runtime.memoryRoot = ensureSessionMemory(ctx);
 		attachIfEnabled(ctx);
 		runtime.refreshFooterGauges(branch, ctx.getContextUsage?.()?.tokens ?? null);
@@ -128,6 +136,32 @@ export default function observationalMemory(pi: ExtensionAPI): void {
 		if (ctx.hasUI) ctx.ui.notify(next ? "观察记忆已启用" : "观察记忆已关闭", "info");
 	}
 
+	/**
+	 * 持久化 defaultEnabled 到 ~/.omp/agent/settings.json。写入通过 OMP
+	 * settings.set —— 走 queueSave 落盘，用户不用手动碰配置文件。类型系统
+	 * 里没有这个 key，as any 绕过；运行时 setByPath 接受任意 path。
+	 */
+	async function persistDefaultEnabled(ctx: any, next: boolean): Promise<void> {
+		runtime.config.defaultEnabled = next;
+		const globalSettings = (pi as unknown as {
+			pi?: { settings?: { set?: (path: string, value: unknown) => void } };
+		}).pi?.settings;
+		try {
+			globalSettings?.set?.("observational-memory.defaultEnabled", next);
+		} catch {
+			// Best-effort: if the SDK surface changed, at least in-memory reflects it
+			// until next session.
+		}
+		if (ctx.hasUI) {
+			ctx.ui.notify(
+				next
+					? "已持久化：以后所有新会话自动启用观察记忆（/om off 可临时关本会话）"
+					: "已持久化：新会话默认关闭观察记忆",
+				"info",
+			);
+		}
+	}
+
 	const OM_SUBCOMMANDS = [
 		{ label: "on", value: "on", description: "启用当前会话的观察记忆" },
 		{ label: "off", value: "off", description: "关闭当前会话的观察记忆" },
@@ -135,7 +169,13 @@ export default function observationalMemory(pi: ExtensionAPI): void {
 		{ label: "status", value: "status", description: "查看在飞 worker / 缓冲池 / 时钟 / 成本" },
 		{ label: "compact", value: "compact", description: "立即触发一次压缩（忽略阈值）" },
 		{ label: "consolidate", value: "consolidate", description: "立即触发一次整合（忽略缓冲池阈值）" },
+		{ label: "default", value: "default ", description: "设置新会话默认启用状态：/om default on|off" },
 		{ label: "help", value: "help", description: "打印全部子命令说明" },
+	];
+
+	const OM_DEFAULT_SUBCOMMANDS = [
+		{ label: "on", value: "on", description: "新会话自动启用（持久化到 settings.json）" },
+		{ label: "off", value: "off", description: "新会话默认关闭（持久化到 settings.json）" },
 	];
 
 	const HELP_LINES = [
@@ -145,6 +185,7 @@ export default function observationalMemory(pi: ExtensionAPI): void {
 		"  /om status               查看状态（默认无 arg 也是 status）",
 		"  /om compact              立即压缩，忽略阈值",
 		"  /om consolidate          立即整合，忽略缓冲池阈值",
+		"  /om default on|off       设置新会话默认启用状态（持久化）",
 		"  /om help                 本帮助",
 		"",
 		"角色分配：/model → OBSERVATIONS / CONSOLIDATOR",
@@ -154,8 +195,19 @@ export default function observationalMemory(pi: ExtensionAPI): void {
 
 	pi.registerCommand("om", {
 		description: "观察记忆（pi-om）：后台抽取对话观察 → 折叠成长期记忆",
-		getArgumentCompletions: (prefix: string) =>
-			OM_SUBCOMMANDS.filter((s) => s.label.startsWith(prefix.toLowerCase())),
+		getArgumentCompletions: (prefix: string) => {
+			const trimmed = prefix.trimStart();
+			// 二级：`/om default ` 之后按 TAB 出 on/off
+			if (trimmed.startsWith("default ") || trimmed === "default") {
+				const sub = trimmed === "default" ? "" : trimmed.slice("default ".length);
+				return OM_DEFAULT_SUBCOMMANDS.filter((s) => s.label.startsWith(sub.toLowerCase())).map((s) => ({
+					label: `default ${s.label}`,
+					value: `default ${s.value}`,
+					description: s.description,
+				}));
+			}
+			return OM_SUBCOMMANDS.filter((s) => s.label.startsWith(trimmed.toLowerCase()));
+		},
 		handler: async (args: string, ctx: any) => {
 			const sub = (args ?? "").trim().toLowerCase().split(/\s+/)[0] ?? "";
 			switch (sub) {
@@ -172,6 +224,18 @@ export default function observationalMemory(pi: ExtensionAPI): void {
 					return handleCompact(pi, runtime, ctx);
 				case "consolidate":
 					return handleConsolidate(pi, runtime, ctx);
+				case "default": {
+					const arg = (args ?? "").trim().toLowerCase().split(/\s+/).slice(1).join(" ");
+					if (arg === "on") return persistDefaultEnabled(ctx, true);
+					if (arg === "off") return persistDefaultEnabled(ctx, false);
+					if (ctx.hasUI) {
+						ctx.ui.notify(
+							`用法：/om default on|off  ·  当前：${runtime.config.defaultEnabled ? "on" : "off"}`,
+							"info",
+						);
+					}
+					return;
+				}
 				case "help":
 				case "?":
 					if (ctx.hasUI) ctx.ui.notify(HELP_LINES.join("\n"), "info");
